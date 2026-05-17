@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<title>Voice Reaction Test</title>
+
+<style>
+body {
+  margin: 0;
+  font-family: Arial;
+  background: #020617;
+  color: white;
+}
+
+/* ===== CENTER MAIN ===== */
+.main {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+}
+
+#target {
+  font-size: 80px;
+  color: #22c55e;
+  margin: 30px 0;
+}
+
+#metrics {
+  font-size: 18px;
+  line-height: 1.6;
+}
+
+/* ===== RIGHT PANEL ===== */
+.panel {
+  position: fixed;
+  right: 20px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 320px;
+}
+
+.card {
+  background: linear-gradient(145deg, #0f172a, #1e293b);
+  border-radius: 14px;
+  padding: 20px;
+  margin-bottom: 20px;
+}
+
+.title {
+  font-size: 11px;
+  color: #64748b;
+  margin-bottom: 8px;
+}
+
+.big {
+  font-size: 48px;
+  color: #818cf8;
+  text-align: center;
+}
+
+.sub {
+  text-align: center;
+  font-size: 13px;
+  color: #94a3b8;
+}
+
+/* waveform */
+.wave {
+  display: flex;
+  justify-content: center;
+  gap: 3px;
+  height: 25px;
+}
+
+.bar {
+  width: 3px;
+  background: #818cf8;
+  animation: wave 1s infinite;
+}
+
+@keyframes wave {
+  0%,100% { height: 8px; }
+  50% { height: 25px; }
+}
+
+/* prob */
+.prob {
+  margin-bottom: 10px;
+}
+
+.label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+}
+
+.progress {
+  height: 5px;
+  background: #1e293b;
+  border-radius: 10px;
+}
+
+.fill {
+  height: 100%;
+  border-radius: 10px;
+}
+
+.up { background:#34d399;}
+.down { background:#fbbf24;}
+.left { background:#818cf8;}
+.right { background:#fb7185;}
+
+button {
+  padding: 12px 24px;
+  font-size: 16px;
+  border-radius: 8px;
+  border: none;
+  background: #6366f1;
+  color: white;
+  cursor: pointer;
+}
+</style>
+
+</head>
+
+<body>
+
+<!-- ===== MAIN ===== -->
+
+<div class="main">
+  <button onclick="startTest()">Start</button>
+
+  <div id="target">---</div>
+
+  <div id="metrics">
+    Reaction: -- ms <br>
+    Recognition: -- ms
+  </div>
+</div>
+
+<!-- ===== RIGHT PANEL ===== -->
+
+<div class="panel">
+
+  <div class="card">
+    <div class="title">LỆNH NHẬN DẠNG</div>
+    <div class="big" id="aiWord">---</div>
+    <div class="sub" id="aiInfo">Waiting...</div>
+  </div>
+
+  <div class="card">
+    <div class="title">WAVEFORM</div>
+    <div class="wave" id="wave"></div>
+  </div>
+
+  <div class="card">
+    <div class="title">ĐỘ TIN CẬY</div>
+    <div id="probBox"></div>
+  </div>
+
+</div>
+
+<script>
+let startDisplayTime, speechStartTime, resultTime;
+let recognition;
+let targetWord = "";
+
+const words = ["UP","DOWN","LEFT","RIGHT"];
+
+function createWave(){
+  let w = document.getElementById("wave");
+  w.innerHTML="";
+  for(let i=0;i<25;i++){
+    let b=document.createElement("div");
+    b.className="bar";
+    w.appendChild(b);
+  }
+}
+
+function randomProbs(correct){
+  let p={UP:5,DOWN:5,LEFT:5,RIGHT:5};
+  p[correct]=80+Math.random()*20;
+
+  let sum=Object.values(p).reduce((a,b)=>a+b,0);
+  for(let k in p) p[k]=p[k]/sum*100;
+  return p;
+}
+
+function renderProbs(p){
+  let box=document.getElementById("probBox");
+  box.innerHTML="";
+  for(let k in p){
+    box.innerHTML+=`
+    <div class="prob">
+      <div class="label">
+        <span>${k}</span>
+        <span>${p[k].toFixed(1)}%</span>
+      </div>
+      <div class="progress">
+        <div class="fill ${k.toLowerCase()}" style="width:${p[k]}%"></div>
+      </div>
+    </div>`;
+  }
+}
+
+function startTest(){
+  targetWord = words[Math.floor(Math.random()*4)];
+  document.getElementById("target").innerText = targetWord;
+
+  createWave();
+
+  startDisplayTime = performance.now();
+  startRecognition();
+}
+
+function startRecognition(){
+  recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+  recognition.lang="en-US";
+  recognition.interimResults=true;
+
+  let detected=false;
+
+  recognition.onresult = (e)=>{
+    let now=performance.now();
+
+    if(!detected){
+      speechStartTime=now;
+      detected=true;
+      recognition.stop();
+    }
+
+    if(e.results[0].isFinal){
+      resultTime=performance.now();
+      let text=e.results[0][0].transcript.toUpperCase();
+      showResult(text);
+    }
+  };
+
+  recognition.start();
+}
+
+function showResult(text){
+  let reaction = speechStartTime - startDisplayTime;
+  let recog = resultTime - speechStartTime;
+
+  document.getElementById("metrics").innerHTML =
+    `Reaction: ${reaction.toFixed(0)} ms <br>
+     Recognition: ${recog.toFixed(0)} ms`;
+
+  document.getElementById("aiWord").innerText = text;
+
+  let probs = randomProbs(targetWord);
+
+  document.getElementById("aiInfo").innerText =
+    `Conf: ${probs[targetWord].toFixed(1)}% | Trễ: ${recog.toFixed(1)} ms`;
+
+  renderProbs(probs);
+}
+</script>
+
+</body>
+</html>

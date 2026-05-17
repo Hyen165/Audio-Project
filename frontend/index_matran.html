@@ -1,0 +1,917 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VoiceCtrl — Điều Khiển Bằng Giọng Nói</title>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #0a0a0f;
+      --surface: #13131a;
+      --surface2: #1c1c28;
+      --border: #2a2a3d;
+      --accent: #7c6af7;
+      --accent2: #f76a8a;
+      --accent3: #6af7c8;
+      --text: #e8e8f0;
+      --muted: #6b6b88;
+      --up: #6af7c8;
+      --down: #f7a56a;
+      --left: #7c6af7;
+      --right: #f76a8a;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Syne', sans-serif;
+      min-height: 100vh;
+      overflow: hidden;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      grid-template-columns: 300px 1fr 300px;
+      grid-template-areas:
+        "header header header"
+        "left   arena  right"
+        "footer footer footer";
+    }
+
+    /* ===== HEADER ===== */
+    header {
+      grid-area: header;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 28px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .logo-icon {
+      width: 36px; height: 36px;
+      background: var(--accent);
+      border-radius: 8px;
+      display: grid; place-items: center;
+      font-size: 18px;
+    }
+    .logo-text { font-size: 1.1rem; font-weight: 800; letter-spacing: -0.02em; }
+    .logo-text span { color: var(--accent); }
+
+    .header-status {
+      display: flex; align-items: center; gap: 8px;
+      font-family: 'Space Mono', monospace;
+      font-size: 0.72rem; color: var(--muted);
+    }
+    .status-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--muted);
+      transition: all 0.3s;
+    }
+    .status-dot.active { background: var(--accent3); box-shadow: 0 0 8px var(--accent3); }
+    .status-dot.listening { 
+      background: var(--accent2); 
+      box-shadow: 0 0 8px var(--accent2);
+      animation: pulse-dot 1s ease-in-out infinite;
+    }
+
+    /* ===== LEFT PANEL — MIC / CONTROLS ===== */
+    .panel-left {
+      grid-area: left;
+      border-right: 1px solid var(--border);
+      display: flex; flex-direction: column;
+      padding: 24px 20px;
+      gap: 20px;
+    }
+
+    .section-label {
+      font-family: 'Space Mono', monospace;
+      font-size: 0.65rem;
+      color: var(--muted);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    /* Mic button */
+    .mic-container {
+      display: flex; flex-direction: column; align-items: center; gap: 16px;
+    }
+
+    .mic-ring {
+      position: relative;
+      width: 100px; height: 100px;
+    }
+    .mic-ring-svg {
+      position: absolute; inset: 0;
+      animation: none;
+    }
+    .mic-ring-svg.active { animation: spin-ring 4s linear infinite; }
+
+    .mic-btn {
+      position: absolute; inset: 8px;
+      background: var(--surface2);
+      border: 2px solid var(--border);
+      border-radius: 50%;
+      cursor: pointer;
+      display: grid; place-items: center;
+      transition: all 0.2s;
+      font-size: 28px;
+      color: var(--muted);
+    }
+    .mic-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .mic-btn.listening {
+      border-color: var(--accent2);
+      background: rgba(247,106,138,0.12);
+      color: var(--accent2);
+      box-shadow: 0 0 24px rgba(247,106,138,0.3);
+    }
+
+    .mic-label {
+      font-size: 0.78rem; color: var(--muted); text-align: center;
+      font-family: 'Space Mono', monospace;
+    }
+
+    /* API settings */
+    .input-group { display: flex; flex-direction: column; gap: 6px; }
+    .input-group input {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 12px;
+      color: var(--text);
+      font-family: 'Space Mono', monospace;
+      font-size: 0.72rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .input-group input:focus { border-color: var(--accent); }
+
+    .connect-btn {
+      background: var(--accent);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      padding: 9px;
+      font-family: 'Syne', sans-serif;
+      font-weight: 600;
+      font-size: 0.8rem;
+      cursor: pointer;
+      transition: all 0.2s;
+      letter-spacing: 0.02em;
+    }
+    .connect-btn:hover { background: #9080ff; }
+    .connect-btn.connected { background: var(--accent3); color: var(--bg); }
+
+    /* Command history */
+    .history-list {
+      flex: 1; overflow-y: auto;
+      display: flex; flex-direction: column; gap: 4px;
+    }
+    .history-list::-webkit-scrollbar { width: 3px; }
+    .history-list::-webkit-scrollbar-track { background: transparent; }
+    .history-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    .history-item {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 6px 10px;
+      background: var(--surface2);
+      border-radius: 6px;
+      border-left: 3px solid var(--border);
+      animation: slide-in 0.2s ease;
+    }
+    .history-item.up    { border-left-color: var(--up); }
+    .history-item.down  { border-left-color: var(--down); }
+    .history-item.left  { border-left-color: var(--left); }
+    .history-item.right { border-left-color: var(--right); }
+
+    .history-cmd {
+      font-family: 'Space Mono', monospace;
+      font-size: 0.75rem; font-weight: 700;
+      text-transform: uppercase;
+    }
+    .history-cmd.up    { color: var(--up); }
+    .history-cmd.down  { color: var(--down); }
+    .history-cmd.left  { color: var(--left); }
+    .history-cmd.right { color: var(--right); }
+
+    .history-conf {
+      font-family: 'Space Mono', monospace;
+      font-size: 0.65rem; color: var(--muted);
+    }
+
+    /* ===== ARENA ===== */
+    .arena-wrap {
+      grid-area: arena;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 20px;
+      padding: 24px;
+      position: relative;
+    }
+
+    .arena {
+      position: relative;
+      width: 480px; height: 480px;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      background:
+        linear-gradient(rgba(124,106,247,0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(124,106,247,0.04) 1px, transparent 1px);
+      background-size: 40px 40px;
+      overflow: hidden;
+    }
+
+    /* Corner decorations */
+    .arena::before, .arena::after {
+      content: '';
+      position: absolute;
+      width: 16px; height: 16px;
+      border-color: var(--accent);
+      border-style: solid;
+    }
+    .arena::before { top: 12px; left: 12px; border-width: 2px 0 0 2px; }
+    .arena::after  { bottom: 12px; right: 12px; border-width: 0 2px 2px 0; }
+
+    /* Player object */
+    .player {
+      position: absolute;
+      width: 44px; height: 44px;
+      background: var(--accent);
+      border-radius: 10px;
+      transition: left 0.18s cubic-bezier(0.22,1,0.36,1), top 0.18s cubic-bezier(0.22,1,0.36,1);
+      display: grid; place-items: center;
+      font-size: 20px;
+      box-shadow: 0 0 20px rgba(124,106,247,0.5);
+    }
+
+    .player::before {
+      content: '';
+      position: absolute; inset: -4px;
+      border-radius: 14px;
+      border: 1px solid var(--accent);
+      opacity: 0.5;
+      animation: player-idle 2s ease-in-out infinite;
+    }
+
+    .player.cmd-up    { box-shadow: 0 0 30px rgba(106,247,200,0.6); background: var(--up);    }
+    .player.cmd-down  { box-shadow: 0 0 30px rgba(247,165,106,0.6); background: var(--down);  }
+    .player.cmd-left  { box-shadow: 0 0 30px rgba(124,106,247,0.6); background: var(--left);  }
+    .player.cmd-right { box-shadow: 0 0 30px rgba(247,106,138,0.6); background: var(--right); }
+
+    /* Trail effect */
+    .trail {
+      position: absolute;
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--accent);
+      opacity: 0;
+      pointer-events: none;
+      animation: trail-fade 0.5s ease forwards;
+    }
+
+    /* DPAD indicator */
+    .dpad {
+      display: grid;
+      grid-template-areas: ". up ." "left center right" ". down .";
+      grid-template-columns: 44px 44px 44px;
+      grid-template-rows: 44px 44px 44px;
+      gap: 3px;
+    }
+    .dpad-btn {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      display: grid; place-items: center;
+      font-size: 13px; color: var(--muted);
+      transition: all 0.15s;
+      cursor: pointer;
+      font-family: 'Space Mono', monospace;
+      font-size: 0.55rem;
+      font-weight: 700;
+    }
+    .dpad-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .dpad-btn.active-up    { background: rgba(106,247,200,0.15); border-color: var(--up);    color: var(--up);    }
+    .dpad-btn.active-down  { background: rgba(247,165,106,0.15); border-color: var(--down);  color: var(--down);  }
+    .dpad-btn.active-left  { background: rgba(124,106,247,0.15); border-color: var(--left);  color: var(--left);  }
+    .dpad-btn.active-right { background: rgba(247,106,138,0.15); border-color: var(--right); color: var(--right); }
+
+    .dpad-btn[data-d="up"]     { grid-area: up; }
+    .dpad-btn[data-d="down"]   { grid-area: down; }
+    .dpad-btn[data-d="left"]   { grid-area: left; }
+    .dpad-btn[data-d="right"]  { grid-area: right; }
+    .dpad-center { grid-area: center; background: var(--surface); border-radius: 6px; }
+
+    /* ===== RIGHT PANEL — STATS ===== */
+    .panel-right {
+      grid-area: right;
+      border-left: 1px solid var(--border);
+      padding: 24px 20px;
+      display: flex; flex-direction: column; gap: 20px;
+      overflow-y: auto;
+    }
+
+    /* Confidence bars */
+    .confidence-bars { display: flex; flex-direction: column; gap: 10px; }
+    .conf-row { display: flex; flex-direction: column; gap: 5px; }
+    .conf-header { display: flex; justify-content: space-between; }
+    .conf-cmd { font-family: 'Space Mono', monospace; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; }
+    .conf-val { font-family: 'Space Mono', monospace; font-size: 0.72rem; color: var(--muted); }
+    .conf-bar-bg {
+      height: 6px; background: var(--surface2); border-radius: 3px; overflow: hidden;
+    }
+    .conf-bar-fill {
+      height: 100%; width: 0%;
+      border-radius: 3px;
+      transition: width 0.3s ease;
+    }
+    .conf-bar-fill.up    { background: var(--up); }
+    .conf-bar-fill.down  { background: var(--down); }
+    .conf-bar-fill.left  { background: var(--left); }
+    .conf-bar-fill.right { background: var(--right); }
+
+    /* Stats grid */
+    .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .stat-card {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+    }
+    .stat-val {
+      font-family: 'Space Mono', monospace;
+      font-size: 1.1rem; font-weight: 700;
+      color: var(--accent);
+    }
+    .stat-lbl {
+      font-size: 0.65rem; color: var(--muted);
+      margin-top: 2px;
+    }
+
+    /* Last prediction display */
+    .prediction-display {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+      text-align: center;
+    }
+    .pred-command {
+      font-family: 'Space Mono', monospace;
+      font-size: 2rem; font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      transition: color 0.2s;
+      min-height: 2.5rem;
+    }
+    .pred-command.up    { color: var(--up); }
+    .pred-command.down  { color: var(--down); }
+    .pred-command.left  { color: var(--left); }
+    .pred-command.right { color: var(--right); }
+    .pred-sub { font-size: 0.65rem; color: var(--muted); margin-top: 4px; }
+
+    /* Waveform */
+    .waveform-container {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px;
+      height: 60px;
+      display: flex; align-items: center; justify-content: center;
+      gap: 2px;
+    }
+    .wave-bar {
+      width: 3px; background: var(--muted);
+      border-radius: 2px; min-height: 4px;
+      transition: height 0.08s ease;
+    }
+
+    /* ===== FOOTER ===== */
+    footer {
+      grid-area: footer;
+      border-top: 1px solid var(--border);
+      background: var(--surface);
+      padding: 10px 28px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .footer-info {
+      font-family: 'Space Mono', monospace;
+      font-size: 0.65rem; color: var(--muted);
+    }
+    .kbd {
+      display: inline-flex; align-items: center; justify-content: center;
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 4px; padding: 2px 6px;
+      font-family: 'Space Mono', monospace; font-size: 0.6rem; color: var(--text);
+      margin: 0 2px;
+    }
+
+    /* ===== ANIMATIONS ===== */
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(0.7); }
+    }
+    @keyframes spin-ring {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+    @keyframes player-idle {
+      0%, 100% { transform: scale(1); opacity: 0.5; }
+      50% { transform: scale(1.1); opacity: 0.3; }
+    }
+    @keyframes slide-in {
+      from { opacity: 0; transform: translateX(-8px); }
+      to { opacity: 1; transform: translateX(0); }
+    }
+    @keyframes trail-fade {
+      0% { opacity: 0.5; transform: scale(1); }
+      100% { opacity: 0; transform: scale(0); }
+    }
+    @keyframes flash {
+      0% { opacity: 1; }
+      50% { opacity: 0.3; }
+      100% { opacity: 1; }
+    }
+
+    .toast {
+      position: fixed; top: 16px; left: 50%; transform: translateX(-50%);
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 8px; padding: 8px 16px;
+      font-family: 'Space Mono', monospace; font-size: 0.72rem;
+      z-index: 999; pointer-events: none;
+      animation: toast-show 2.5s ease forwards;
+    }
+    @keyframes toast-show {
+      0% { opacity: 0; transform: translateX(-50%) translateY(-8px); }
+      10% { opacity: 1; transform: translateX(-50%) translateY(0); }
+      80% { opacity: 1; }
+      100% { opacity: 0; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header>
+  <div class="logo">
+    <div class="logo-icon">🎙</div>
+    <div class="logo-text">Voice<span>Ctrl</span></div>
+  </div>
+  <div class="header-status">
+    <div class="status-dot" id="statusDot"></div>
+    <span id="statusText">OFFLINE</span>
+  </div>
+  <div style="font-family:'Space Mono',monospace;font-size:0.65rem;color:var(--muted);">
+    SVM Speech Recognition v1.0
+  </div>
+</header>
+
+<!-- LEFT PANEL -->
+<div class="panel-left">
+  <div class="section-label">Microphone</div>
+
+  <div class="mic-container">
+    <div class="mic-ring">
+      <svg class="mic-ring-svg" id="micRingSvg" viewBox="0 0 100 100">
+        <circle cx="50" cy="50" r="44" fill="none" stroke="var(--border)" stroke-width="1" />
+        <circle cx="50" cy="50" r="44" fill="none" stroke="var(--accent)"
+          stroke-width="1.5" stroke-dasharray="8 4" stroke-linecap="round" opacity="0.5"/>
+      </svg>
+      <button class="mic-btn" id="micBtn" onclick="toggleListening()">🎤</button>
+    </div>
+    <div class="mic-label" id="micLabel">NHẤN ĐỂ NÓI</div>
+  </div>
+
+  <div class="section-label">API Endpoint</div>
+  <div class="input-group">
+    <input type="text" id="apiUrl" value="http://localhost:8000" placeholder="http://localhost:8000" />
+    <button class="connect-btn" id="connectBtn" onclick="testConnection()">Kiểm Tra Kết Nối</button>
+  </div>
+
+  <div class="section-label">Lịch Sử Lệnh</div>
+  <div class="history-list" id="historyList">
+    <div style="font-family:'Space Mono',monospace;font-size:0.65rem;color:var(--muted);padding:8px 0;">Chưa có lệnh nào...</div>
+  </div>
+</div>
+
+<!-- ARENA -->
+<div class="arena-wrap">
+  <div class="arena" id="arena">
+    <div class="player" id="player">🟣</div>
+  </div>
+
+  <div class="dpad">
+    <button class="dpad-btn" data-d="up"    onclick="manualMove('up')">▲ UP</button>
+    <button class="dpad-btn" data-d="left"  onclick="manualMove('left')">◀ LEFT</button>
+    <div class="dpad-center"></div>
+    <button class="dpad-btn" data-d="right" onclick="manualMove('right')">RIGHT ▶</button>
+    <button class="dpad-btn" data-d="down"  onclick="manualMove('down')">▼ DOWN</button>
+  </div>
+</div>
+
+<!-- RIGHT PANEL -->
+<div class="panel-right">
+  <div class="section-label">Lệnh Nhận Dạng</div>
+  <div class="prediction-display">
+    <div class="pred-command" id="predCommand">—</div>
+    <div class="pred-sub" id="predSub">Chờ lệnh thoại...</div>
+  </div>
+
+  <div class="section-label">Waveform</div>
+  <div class="waveform-container" id="waveformContainer">
+    <!-- filled by JS -->
+  </div>
+
+  <div class="section-label">Độ Tin Cậy</div>
+  <div class="confidence-bars" id="confBars">
+    <!-- filled by JS -->
+  </div>
+
+  <div class="section-label">Thống Kê</div>
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="stat-val" id="statTotal">0</div>
+      <div class="stat-lbl">Tổng lệnh</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-val" id="statAccuracy" style="color:var(--accent3)">—</div>
+      <div class="stat-lbl">Conf. TB</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-val" id="statLatency" style="color:var(--accent2)">—</div>
+      <div class="stat-lbl">Độ trễ TB</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-val" id="statLast" style="color:var(--down)">—</div>
+      <div class="stat-lbl">Trễ cuối</div>
+    </div>
+  </div>
+</div>
+
+<!-- FOOTER -->
+<footer>
+  <div class="footer-info">
+    Đề tài: Ứng dụng ML trong điều khiển đối tượng trên Web bằng lệnh thoại thời gian thực
+  </div>
+  <div class="footer-info">
+    Phím tắt: <span class="kbd">SPACE</span> ghi âm &nbsp;|&nbsp; <span class="kbd">↑↓←→</span> di chuyển thủ công
+  </div>
+</footer>
+
+<script>
+// ========================
+//  STATE
+// ========================
+const STEP = 40; // pixels per move
+const ARENA_W = 480, ARENA_H = 480, PLAYER_SIZE = 44;
+const RECORD_MS = 1500; // recording duration
+
+let pos = { x: (ARENA_W - PLAYER_SIZE) / 2, y: (ARENA_H - PLAYER_SIZE) / 2 };
+let isListening = false;
+let mediaRecorder = null;
+let audioChunks = [];
+let audioCtx = null;
+let analyser = null;
+let waveAnimFrame = null;
+let stats = { total: 0, confSum: 0, latencySum: 0, lastLatency: 0 };
+let apiConnected = false;
+
+// ========================
+//  INIT
+// ========================
+function init() {
+  renderWaveform();
+  renderConfBars({});
+  updatePlayerPos(false);
+  setupKeyboard();
+}
+
+// ========================
+//  PLAYER
+// ========================
+function updatePlayerPos(animate = true) {
+  const player = document.getElementById('player');
+  player.style.left = pos.x + 'px';
+  player.style.top  = pos.y + 'px';
+}
+
+function movePlayer(direction) {
+  const prev = { ...pos };
+  const maxX = ARENA_W - PLAYER_SIZE;
+  const maxY = ARENA_H - PLAYER_SIZE;
+
+  if (direction === 'up')    pos.y = Math.max(0, pos.y - STEP);
+  if (direction === 'down')  pos.y = Math.min(maxY, pos.y + STEP);
+  if (direction === 'left')  pos.x = Math.max(0, pos.x - STEP);
+  if (direction === 'right') pos.x = Math.min(maxX, pos.x + STEP);
+
+  spawnTrail(prev.x + PLAYER_SIZE/2, prev.y + PLAYER_SIZE/2, direction);
+  updatePlayerPos(true);
+  flashPlayer(direction);
+  flashDpad(direction);
+}
+
+function flashPlayer(dir) {
+  const player = document.getElementById('player');
+  const emojis = { up: '⬆️', down: '⬇️', left: '⬅️', right: '➡️' };
+  player.textContent = emojis[dir] || '🟣';
+  player.className = 'player cmd-' + dir;
+  setTimeout(() => {
+    player.textContent = '🟣';
+    player.className = 'player';
+  }, 400);
+}
+
+function spawnTrail(x, y, dir) {
+  const arena = document.getElementById('arena');
+  const t = document.createElement('div');
+  t.className = 'trail';
+  t.style.left = (x - 4) + 'px';
+  t.style.top  = (y - 4) + 'px';
+  t.style.background = `var(--${dir})`;
+  arena.appendChild(t);
+  setTimeout(() => t.remove(), 500);
+}
+
+function flashDpad(dir) {
+  document.querySelectorAll('.dpad-btn').forEach(b => b.className = 'dpad-btn');
+  const btn = document.querySelector(`.dpad-btn[data-d="${dir}"]`);
+  if (btn) {
+    btn.className = `dpad-btn active-${dir}`;
+    setTimeout(() => btn.className = 'dpad-btn', 400);
+  }
+}
+
+function manualMove(dir) {
+  movePlayer(dir);
+  addHistory(dir, 1.0, 0);
+}
+
+// ========================
+//  RECORDING
+// ========================
+async function toggleListening() {
+  if (isListening) return;
+  if (!apiConnected) {
+    showToast('⚠️ Chưa kết nối API. Kiểm tra endpoint.');
+    return;
+  }
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    startRecording(stream);
+  } catch (e) {
+    showToast('❌ Không thể truy cập microphone');
+  }
+}
+
+function startRecording(stream) {
+  isListening = true;
+  audioChunks = [];
+
+  // Setup analyser for waveform
+  audioCtx = new AudioContext();
+  analyser = audioCtx.createAnalyser();
+  analyser.fftSize = 64;
+  const src = audioCtx.createMediaStreamSource(stream);
+  src.connect(analyser);
+  animateWaveform();
+
+  mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+  mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+  mediaRecorder.onstop = () => {
+    stream.getTracks().forEach(t => t.stop());
+    stopWaveformAnim();
+    sendAudio();
+  };
+  mediaRecorder.start();
+
+  // Update UI
+  document.getElementById('micBtn').className = 'mic-btn listening';
+  document.getElementById('micRingSvg').className = 'mic-ring-svg active';
+  document.getElementById('micLabel').textContent = 'ĐANG NGHE...';
+  document.getElementById('statusDot').className = 'status-dot listening';
+  document.getElementById('statusText').textContent = 'LISTENING';
+
+  // Auto-stop after RECORD_MS
+  setTimeout(() => {
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+      mediaRecorder.stop();
+      resetMicUI();
+    }
+  }, RECORD_MS);
+}
+
+function resetMicUI() {
+  isListening = false;
+  document.getElementById('micBtn').className = 'mic-btn';
+  document.getElementById('micRingSvg').className = 'mic-ring-svg';
+  document.getElementById('micLabel').textContent = 'NHẤN ĐỂ NÓI';
+  document.getElementById('statusDot').className = apiConnected ? 'status-dot active' : 'status-dot';
+  document.getElementById('statusText').textContent = apiConnected ? 'ONLINE' : 'OFFLINE';
+}
+
+// ========================
+//  API
+// ========================
+async function sendAudio() {
+  const blob = new Blob(audioChunks, { type: 'audio/webm' });
+  const formData = new FormData();
+  formData.append('audio', blob, 'command.webm');
+
+  const apiUrl = document.getElementById('apiUrl').value.trim();
+  const t0 = performance.now();
+
+  try {
+    const res = await fetch(`${apiUrl}/predict`, { method: 'POST', body: formData });
+    const data = await res.json();
+    const latency = Math.round(performance.now() - t0);
+
+    if (data.command) {
+      handlePrediction(data, latency);
+    } else {
+      showToast('⚠️ Không nhận dạng được lệnh');
+    }
+  } catch (e) {
+    showToast('❌ Lỗi kết nối API');
+    console.error(e);
+  }
+}
+
+function handlePrediction(data, clientLatency) {
+  const cmd = data.command.toLowerCase();
+  const conf = data.confidence || 0;
+  const latency = data.latency_ms || clientLatency;
+
+  // Move player
+  if (['up','down','left','right'].includes(cmd)) {
+    movePlayer(cmd);
+  }
+
+  // Update prediction display
+  const predEl = document.getElementById('predCommand');
+  predEl.textContent = cmd.toUpperCase();
+  predEl.className = `pred-command ${cmd}`;
+  document.getElementById('predSub').textContent = `Conf: ${(conf*100).toFixed(1)}%  |  Trễ: ${latency}ms`;
+
+  // Update confidence bars
+  renderConfBars(data.probabilities || {});
+
+  // Update stats
+  stats.total++;
+  stats.confSum += conf;
+  stats.latencySum += latency;
+  stats.lastLatency = latency;
+  updateStats();
+
+  // History
+  addHistory(cmd, conf, latency);
+}
+
+async function testConnection() {
+  const apiUrl = document.getElementById('apiUrl').value.trim();
+  const btn = document.getElementById('connectBtn');
+  btn.textContent = 'Đang kiểm tra...';
+  btn.disabled = true;
+
+  try {
+    const res = await fetch(`${apiUrl}/health`);
+    const data = await res.json();
+    apiConnected = true;
+    btn.textContent = '✓ Đã kết nối';
+    btn.className = 'connect-btn connected';
+    document.getElementById('statusDot').className = 'status-dot active';
+    document.getElementById('statusText').textContent = 'ONLINE';
+    showToast(`✅ Kết nối thành công! Model: ${data.model_loaded ? 'loaded' : 'mock'}`);
+  } catch (e) {
+    apiConnected = false;
+    btn.textContent = '✗ Thất bại — Thử lại';
+    btn.className = 'connect-btn';
+    showToast('❌ Không thể kết nối tới API');
+  }
+
+  btn.disabled = false;
+}
+
+// ========================
+//  UI HELPERS
+// ========================
+function addHistory(cmd, conf, latency) {
+  const list = document.getElementById('historyList');
+  const placeholder = list.querySelector('[style]');
+  if (placeholder) placeholder.remove();
+
+  const item = document.createElement('div');
+  item.className = `history-item ${cmd}`;
+  item.innerHTML = `
+    <span class="history-cmd ${cmd}">${cmd.toUpperCase()}</span>
+    <span class="history-conf">${(conf*100).toFixed(0)}% · ${latency}ms</span>
+  `;
+  list.insertBefore(item, list.firstChild);
+
+  // Keep max 20 items
+  while (list.children.length > 20) list.removeChild(list.lastChild);
+}
+
+function renderConfBars(probabilities) {
+  const cmds = ['up','down','left','right'];
+  const container = document.getElementById('confBars');
+  container.innerHTML = '';
+
+  cmds.forEach(cmd => {
+    const val = probabilities[cmd] !== undefined ? probabilities[cmd] : 0;
+    const pct = (val * 100).toFixed(1);
+    container.innerHTML += `
+      <div class="conf-row">
+        <div class="conf-header">
+          <span class="conf-cmd ${cmd}">${cmd}</span>
+          <span class="conf-val">${pct}%</span>
+        </div>
+        <div class="conf-bar-bg">
+          <div class="conf-bar-fill ${cmd}" style="width:${pct}%"></div>
+        </div>
+      </div>
+    `;
+  });
+}
+
+function updateStats() {
+  document.getElementById('statTotal').textContent = stats.total;
+  const avgConf = stats.total ? (stats.confSum / stats.total * 100).toFixed(1) + '%' : '—';
+  const avgLat  = stats.total ? Math.round(stats.latencySum / stats.total) + 'ms' : '—';
+  document.getElementById('statAccuracy').textContent = avgConf;
+  document.getElementById('statLatency').textContent  = avgLat;
+  document.getElementById('statLast').textContent     = stats.lastLatency + 'ms';
+}
+
+function renderWaveform() {
+  const container = document.getElementById('waveformContainer');
+  container.innerHTML = '';
+  for (let i = 0; i < 32; i++) {
+    const bar = document.createElement('div');
+    bar.className = 'wave-bar';
+    bar.style.height = (Math.random() * 8 + 4) + 'px';
+    container.appendChild(bar);
+  }
+}
+
+function animateWaveform() {
+  if (!analyser) return;
+  const bars = document.querySelectorAll('.wave-bar');
+  const data = new Uint8Array(analyser.frequencyBinCount);
+
+  function draw() {
+    waveAnimFrame = requestAnimationFrame(draw);
+    analyser.getByteFrequencyData(data);
+    bars.forEach((bar, i) => {
+      const val = (data[i] || 0) / 255;
+      const h = Math.max(4, val * 50);
+      bar.style.height = h + 'px';
+      bar.style.background = val > 0.5 ? 'var(--accent)' : 'var(--muted)';
+    });
+  }
+  draw();
+}
+
+function stopWaveformAnim() {
+  if (waveAnimFrame) cancelAnimationFrame(waveAnimFrame);
+  renderWaveform();
+  if (audioCtx) audioCtx.close().catch(() => {});
+  audioCtx = null;
+  analyser = null;
+}
+
+function setupKeyboard() {
+  document.addEventListener('keydown', e => {
+    if (e.key === ' ' || e.key === 'Spacebar') {
+      e.preventDefault();
+      toggleListening();
+    }
+    const map = { ArrowUp:'up', ArrowDown:'down', ArrowLeft:'left', ArrowRight:'right' };
+    if (map[e.key]) manualMove(map[e.key]);
+  });
+}
+
+function showToast(msg) {
+  const t = document.createElement('div');
+  t.className = 'toast';
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2800);
+}
+
+// Auto-test connection on load
+window.addEventListener('load', () => {
+  init();
+  testConnection();
+});
+</script>
+</body>
+</html>

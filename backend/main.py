@@ -1,5 +1,7 @@
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
+
 import numpy as np
 import joblib
 import librosa
@@ -8,6 +10,7 @@ import time
 import logging
 import subprocess
 
+# ===== LOGGING =====
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -20,9 +23,46 @@ except Exception as e:
     FFMPEG_PATH = None
     logger.error(f"❌ Không tìm thấy ffmpeg: {e}")
 
-# ===== FastAPI =====
-app = FastAPI(title="Speech Command API", version="1.0.0")
+# ===== PATH =====
+MODEL_PATH   = "models/svm_speech_model_v3_svm.joblib"
+SCALER_PATH  = "models/scaler_v3.joblib"
+ENCODER_PATH = "models/label_encoder_v3.joblib"
+PCA_PATH     = "models/pca_v3.joblib"
 
+# ===== GLOBAL =====
+model = None
+scaler = None
+label_encoder = None
+pca = None
+
+
+# ===== LIFESPAN =====
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global model, scaler, label_encoder, pca
+
+    try:
+        model         = joblib.load(MODEL_PATH)
+        scaler        = joblib.load(SCALER_PATH)
+        label_encoder = joblib.load(ENCODER_PATH)
+        pca           = joblib.load(PCA_PATH)
+
+        logger.info("✅ Model + Scaler + LabelEncoder + PCA (v3) loaded")
+
+    except Exception as e:
+        logger.error(f"❌ Load model failed: {e}")
+
+    yield  # bắt buộc
+
+
+# ===== FASTAPI APP =====
+app = FastAPI(
+    title="Speech Command API",
+    version="1.0.0",
+    lifespan=lifespan
+)
+
+# ===== CORS =====
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -30,31 +70,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# ===== PATH =====
-MODEL_PATH   = "models/svm_speech_model.joblib"
-SCALER_PATH  = "models/scaler.joblib"
-ENCODER_PATH = "models/label_encoder.joblib"
-
-model = None
-scaler = None
-label_encoder = None
-
-
-# ===== LOAD MODEL =====
-@app.on_event("startup")
-async def load_model():
-    global model, scaler, label_encoder
-
-    try:
-        model = joblib.load(MODEL_PATH)
-        scaler = joblib.load(SCALER_PATH)
-        label_encoder = joblib.load(ENCODER_PATH)
-
-        logger.info("✅ Model + Scaler + LabelEncoder loaded")
-
-    except Exception as e:
-        logger.error(f"❌ Load model failed: {e}")
 
 
 # ===== AUDIO LOADING =====
@@ -100,15 +115,35 @@ def extract_features(audio_data: np.ndarray, sample_rate: int) -> np.ndarray:
     if np.max(np.abs(audio_data)) > 0:
         audio_data = audio_data / np.max(np.abs(audio_data))
 
-    mfcc = librosa.feature.mfcc(
-        y=audio_data,
-        sr=sample_rate,
-        n_mfcc=40
-    )
+    # MFCC (mean + std) — 80 chiều
+    mfcc = librosa.feature.mfcc(y=audio_data, sr=sample_rate, n_mfcc=40)
+
+    # Delta MFCC (mean + std) — 80 chiều
+    delta_mfcc = librosa.feature.delta(mfcc)
+
+    # Delta-Delta MFCC (mean + std) — 80 chiều
+    delta2_mfcc = librosa.feature.delta(mfcc, order=2)
+
+    # Chroma (mean + std) — 24 chiều
+    chroma = librosa.feature.chroma_stft(y=audio_data, sr=sample_rate)
+
+    # ZCR (mean + std) — 2 chiều
+    zcr = librosa.feature.zero_crossing_rate(y=audio_data)
+
+    # RMS Energy (mean + std) — 2 chiều
+    rms = librosa.feature.rms(y=audio_data)
+
+    # Spectral Contrast (mean + std) — 14 chiều (7 bands x 2)
+    contrast = librosa.feature.spectral_contrast(y=audio_data, sr=sample_rate)
 
     features = np.concatenate([
-        np.mean(mfcc, axis=1),
-        np.std(mfcc, axis=1),
+        np.mean(mfcc, axis=1),        np.std(mfcc, axis=1),
+        np.mean(delta_mfcc, axis=1),  np.std(delta_mfcc, axis=1),
+        np.mean(delta2_mfcc, axis=1), np.std(delta2_mfcc, axis=1),
+        np.mean(chroma, axis=1),      np.std(chroma, axis=1),
+        np.mean(zcr, axis=1),         np.std(zcr, axis=1),
+        np.mean(rms, axis=1),         np.std(rms, axis=1),
+        np.mean(contrast, axis=1),    np.std(contrast, axis=1),
     ])
 
     return features
@@ -132,13 +167,16 @@ async def predict_command(audio: UploadFile = File(...)):
         logger.info(f"Feature shape: {features.shape}")
 
         if model is not None:
-            # ===== SCALE (QUAN TRỌNG) =====
+            # ===== SCALE =====
             features = scaler.transform(features)
+
+            # ===== PCA =====
+            features = pca.transform(features)
 
             # ===== PREDICT =====
             pred = model.predict(features)[0]
 
-            # ===== DECODE LABEL =====
+            # ===== DECODE =====
             prediction = label_encoder.inverse_transform([pred])[0]
 
             # ===== CONFIDENCE =====
@@ -150,11 +188,9 @@ async def predict_command(audio: UploadFile = File(...)):
                     str(label_encoder.inverse_transform([cls])[0]): float(p)
                     for cls, p in zip(model.classes_, proba)
                 }
-
             else:
                 confidence = 0.85
                 probabilities = {}
-
         else:
             import random
             prediction = random.choice(["left", "right", "up", "down"])

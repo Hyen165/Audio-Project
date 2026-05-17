@@ -1,10 +1,9 @@
 fastapi
-uvicorn[standard]
-python-multipart
-joblib
-librosa
+uvicorn
 numpy
+scipy
+librosa
 soundfile
 scikit-learn
-pydub
+joblib
 imageio-ffmpeg

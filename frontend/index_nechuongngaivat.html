@@ -1,0 +1,1263 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VoiceCtrl — Điều Khiển Bằng Giọng Nói</title>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #0a0a0f;
+      --surface: #13131a;
+      --surface2: #1c1c28;
+      --border: #2a2a3d;
+      --accent: #7c6af7;
+      --accent2: #f76a8a;
+      --accent3: #6af7c8;
+      --text: #e8e8f0;
+      --muted: #6b6b88;
+      --up: #6af7c8;
+      --down: #f7a56a;
+      --left: #7c6af7;
+      --right: #f76a8a;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Syne', sans-serif;
+      height: 100vh;
+      overflow: hidden;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      grid-template-columns: 280px 1fr 280px;
+      grid-template-areas:
+        "header header header"
+        "left   arena  right"
+        "footer footer footer";
+    }
+
+    /* ===== HEADER ===== */
+    header {
+      grid-area: header;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 28px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
+
+    .logo { display: flex; align-items: center; gap: 10px; }
+    .logo-icon {
+      width: 36px; height: 36px;
+      background: var(--accent);
+      border-radius: 8px;
+      display: grid; place-items: center;
+      font-size: 18px;
+    }
+    .logo-text { font-size: 1.1rem; font-weight: 800; letter-spacing: -0.02em; }
+    .logo-text span { color: var(--accent); }
+
+    .header-status {
+      display: flex; align-items: center; gap: 8px;
+      font-family: 'Space Mono', monospace;
+      font-size: 0.72rem; color: var(--muted);
+    }
+    .status-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--muted);
+      transition: all 0.3s;
+    }
+    .status-dot.active { background: var(--accent3); box-shadow: 0 0 8px var(--accent3); }
+    .status-dot.listening {
+      background: var(--accent2);
+      box-shadow: 0 0 8px var(--accent2);
+      animation: pulse-dot 1s ease-in-out infinite;
+    }
+
+    /* ===== LEFT PANEL ===== */
+    .panel-left {
+      grid-area: left;
+      border-right: 1px solid var(--border);
+      display: flex; flex-direction: column;
+      padding: 24px 20px;
+      gap: 20px;
+      overflow-y: auto;
+    }
+
+    .section-label {
+      font-family: 'Space Mono', monospace;
+      font-size: 0.65rem;
+      color: var(--muted);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .mic-container { display: flex; flex-direction: column; align-items: center; gap: 16px; }
+    .mic-ring { position: relative; width: 100px; height: 100px; }
+    .mic-ring-svg { position: absolute; inset: 0; animation: none; }
+    .mic-ring-svg.active { animation: spin-ring 4s linear infinite; }
+
+    .mic-btn {
+      position: absolute; inset: 8px;
+      background: var(--surface2);
+      border: 2px solid var(--border);
+      border-radius: 50%;
+      cursor: pointer;
+      display: grid; place-items: center;
+      transition: all 0.2s;
+      font-size: 28px;
+      color: var(--muted);
+    }
+    .mic-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .mic-btn.listening {
+      border-color: var(--accent2);
+      background: rgba(247,106,138,0.12);
+      color: var(--accent2);
+      box-shadow: 0 0 24px rgba(247,106,138,0.3);
+    }
+
+    .mic-label {
+      font-size: 0.78rem; color: var(--muted); text-align: center;
+      font-family: 'Space Mono', monospace;
+    }
+
+    .input-group { display: flex; flex-direction: column; gap: 6px; }
+    .input-group input {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 12px;
+      color: var(--text);
+      font-family: 'Space Mono', monospace;
+      font-size: 0.72rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .input-group input:focus { border-color: var(--accent); }
+
+    .connect-btn {
+      background: var(--accent);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      padding: 9px;
+      font-family: 'Syne', sans-serif;
+      font-weight: 600;
+      font-size: 0.8rem;
+      cursor: pointer;
+      transition: all 0.2s;
+      letter-spacing: 0.02em;
+    }
+    .connect-btn:hover { background: #9080ff; }
+    .connect-btn.connected { background: var(--accent3); color: var(--bg); }
+
+    .history-list {
+      flex: 1; overflow-y: auto;
+      display: flex; flex-direction: column; gap: 4px;
+    }
+    .history-list::-webkit-scrollbar { width: 3px; }
+    .history-list::-webkit-scrollbar-track { background: transparent; }
+    .history-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    .history-item {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 6px 10px;
+      background: var(--surface2);
+      border-radius: 6px;
+      border-left: 3px solid var(--border);
+      animation: slide-in 0.2s ease;
+    }
+    .history-item.up    { border-left-color: var(--up); }
+    .history-item.down  { border-left-color: var(--down); }
+    .history-item.left  { border-left-color: var(--left); }
+    .history-item.right { border-left-color: var(--right); }
+
+    .history-cmd {
+      font-family: 'Space Mono', monospace;
+      font-size: 0.75rem; font-weight: 700;
+      text-transform: uppercase;
+    }
+    .history-cmd.up    { color: var(--up); }
+    .history-cmd.down  { color: var(--down); }
+    .history-cmd.left  { color: var(--left); }
+    .history-cmd.right { color: var(--right); }
+    .history-conf { font-family: 'Space Mono', monospace; font-size: 0.65rem; color: var(--muted); }
+
+    /* ===== ARENA (game canvas) ===== */
+    .arena-wrap {
+      grid-area: arena;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 10px;
+      padding: 12px;
+      position: relative;
+      overflow: hidden;
+      min-height: 0;
+    }
+
+    .game-container {
+      position: relative;
+      width: 100%;
+      max-width: 520px;
+      flex-shrink: 0;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      overflow: hidden;
+      background: #080818;
+    }
+
+    #cv { display: block; width: 100%; height: auto; }
+
+    /* top HUD overlay */
+    #top-hud {
+      position: absolute; top: 0; left: 0; right: 0;
+      display: flex; justify-content: space-between; align-items: flex-start;
+      padding: 10px 14px; pointer-events: none;
+    }
+    .hud-score { color: #fff; font-size: 20px; font-weight: 700; letter-spacing: 1px; text-shadow: 0 0 10px #f7c500; font-family: 'Space Mono', monospace; }
+    .hud-right { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; }
+    .hud-coins { display: flex; align-items: center; gap: 5px; background: rgba(0,0,0,0.4); border-radius: 20px; padding: 3px 10px; }
+    .hud-coins span { color: #FAC775; font-size: 12px; font-weight: 700; font-family: 'Space Mono', monospace; }
+    .coin-icon { width: 12px; height: 12px; border-radius: 50%; background: #FAC775; border: 2px solid #EF9F27; }
+    .hud-lives { display: flex; gap: 3px; }
+    .heart { width: 13px; height: 13px; position: relative; display: inline-block; }
+    .heart::before, .heart::after { content: ''; position: absolute; width: 6px; height: 6px; background: #E24B4A; border-radius: 50%; }
+    .heart::before { left: 0; top: 0; }
+    .heart::after  { right: 0; top: 0; }
+    .heart-tri { width: 0; height: 0; border-left: 6px solid transparent; border-right: 6px solid transparent; border-top: 8px solid #E24B4A; position: absolute; bottom: 0; left: 0; }
+
+    /* cmd indicator bottom */
+    #cmd-hud {
+      position: absolute; bottom: 0; left: 0; right: 0;
+      display: flex; gap: 5px; padding: 8px 10px; pointer-events: none;
+    }
+    .gcmd {
+      flex: 1; background: rgba(255,255,255,0.07);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 6px; color: rgba(255,255,255,0.45);
+      font-size: 10px; text-align: center; padding: 3px 0;
+      font-family: 'Space Mono', monospace;
+      transition: all 0.15s;
+    }
+    .gcmd.active { background: rgba(247,197,0,0.22); border-color: #f7c500; color: #f7c500; }
+
+    /* game overlay */
+    #game-overlay {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      background: rgba(0,0,0,0.78);
+      border-radius: 16px;
+    }
+    #game-overlay h2 { color: #f7c500; font-size: 24px; font-weight: 800; margin-bottom: 5px; letter-spacing: 2px; text-transform: uppercase; font-family: 'Syne', sans-serif; }
+    #game-overlay .sub { color: rgba(255,255,255,0.55); font-size: 11px; margin-bottom: 18px; text-align: center; line-height: 1.7; font-family: 'Space Mono', monospace; }
+    #game-overlay .score-big { color: #fff; font-size: 38px; font-weight: 700; margin-bottom: 3px; font-family: 'Space Mono', monospace; }
+    #game-overlay .score-label { color: rgba(255,255,255,0.35); font-size: 11px; margin-bottom: 18px; font-family: 'Space Mono', monospace; }
+    #start-btn {
+      background: #f7c500; color: #0d0d1a;
+      border: none; border-radius: 24px;
+      padding: 9px 28px; font-size: 13px; font-weight: 700;
+      cursor: pointer; letter-spacing: 1px; text-transform: uppercase;
+      font-family: 'Syne', sans-serif;
+      transition: background 0.2s;
+    }
+    #start-btn:hover { background: #ffd740; }
+
+    /* speed badge */
+    .speed-badge {
+      position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+      background: rgba(124,106,247,0.25); border: 1px solid var(--accent);
+      border-radius: 20px; padding: 2px 10px;
+      font-family: 'Space Mono', monospace; font-size: 10px; color: var(--accent);
+      pointer-events: none;
+    }
+
+    /* manual control buttons */
+    .manual-controls {
+      display: flex; flex-direction: column; align-items: center; gap: 4px;
+      flex-shrink: 0;
+    }
+    .manual-row { display: flex; gap: 6px; align-items: center; }
+    .ctrl-btn {
+      width: 44px; height: 44px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 16px;
+      cursor: pointer;
+      transition: all 0.12s;
+      display: grid; place-items: center;
+    }
+    .ctrl-btn:hover { border-color: var(--accent); background: rgba(124,106,247,0.15); }
+    .ctrl-btn:active, .ctrl-btn.flash {
+      background: rgba(247,197,0,0.25); border-color: #f7c500; color: #f7c500;
+      transform: scale(0.93);
+    }
+    .ctrl-btn.up-btn  { border-color: var(--up);    color: var(--up); }
+    .ctrl-btn.down-btn{ border-color: var(--down);  color: var(--down); }
+    .ctrl-btn.left-btn{ border-color: var(--left);  color: var(--left); }
+    .ctrl-btn.right-btn{border-color: var(--right); color: var(--right); }
+    .ctrl-spacer { width: 44px; }
+
+    /* mic/manual toggle in overlay */
+    .mic-toggle-group { display: flex; gap: 8px; margin-bottom: 16px; }
+    .mic-toggle-btn {
+      flex: 1;
+      background: rgba(255,255,255,0.07);
+      border: 1px solid rgba(255,255,255,0.18);
+      border-radius: 10px;
+      color: rgba(255,255,255,0.5);
+      font-family: 'Syne', sans-serif;
+      font-size: 0.75rem; font-weight: 600;
+      padding: 7px 14px;
+      cursor: pointer;
+      transition: all 0.18s;
+    }
+    .mic-toggle-btn.active {
+      background: rgba(124,106,247,0.3);
+      border-color: var(--accent);
+      color: #fff;
+      box-shadow: 0 0 10px rgba(124,106,247,0.3);
+    }
+
+    .panel-right {
+      grid-area: right;
+      border-left: 1px solid var(--border);
+      padding: 24px 20px;
+      display: flex; flex-direction: column; gap: 20px;
+      overflow-y: auto;
+    }
+
+    .confidence-bars { display: flex; flex-direction: column; gap: 10px; }
+    .conf-row { display: flex; flex-direction: column; gap: 5px; }
+    .conf-header { display: flex; justify-content: space-between; }
+    .conf-cmd { font-family: 'Space Mono', monospace; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; }
+    .conf-val { font-family: 'Space Mono', monospace; font-size: 0.72rem; color: var(--muted); }
+    .conf-bar-bg { height: 6px; background: var(--surface2); border-radius: 3px; overflow: hidden; }
+    .conf-bar-fill { height: 100%; width: 0%; border-radius: 3px; transition: width 0.3s ease; }
+    .conf-bar-fill.up    { background: var(--up); }
+    .conf-bar-fill.down  { background: var(--down); }
+    .conf-bar-fill.left  { background: var(--left); }
+    .conf-bar-fill.right { background: var(--right); }
+
+    .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .stat-card { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 12px; }
+    .stat-val { font-family: 'Space Mono', monospace; font-size: 1.1rem; font-weight: 700; color: var(--accent); }
+    .stat-lbl { font-size: 0.65rem; color: var(--muted); margin-top: 2px; }
+
+    .prediction-display {
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 12px; padding: 16px; text-align: center;
+    }
+    .pred-command {
+      font-family: 'Space Mono', monospace;
+      font-size: 2rem; font-weight: 700; letter-spacing: 0.08em;
+      text-transform: uppercase; color: var(--muted);
+      transition: color 0.2s; min-height: 2.5rem;
+    }
+    .pred-command.up    { color: var(--up); }
+    .pred-command.down  { color: var(--down); }
+    .pred-command.left  { color: var(--left); }
+    .pred-command.right { color: var(--right); }
+    .pred-sub { font-size: 0.65rem; color: var(--muted); margin-top: 4px; }
+
+    .waveform-container {
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 10px; padding: 10px; height: 60px;
+      display: flex; align-items: center; justify-content: center; gap: 2px;
+    }
+    .wave-bar { width: 3px; background: var(--muted); border-radius: 2px; min-height: 4px; transition: height 0.08s ease; }
+
+    /* ===== FOOTER ===== */
+    footer {
+      grid-area: footer;
+      border-top: 1px solid var(--border);
+      background: var(--surface);
+      padding: 10px 28px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .footer-info { font-family: 'Space Mono', monospace; font-size: 0.65rem; color: var(--muted); }
+    .kbd {
+      display: inline-flex; align-items: center; justify-content: center;
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 4px; padding: 2px 6px;
+      font-family: 'Space Mono', monospace; font-size: 0.6rem; color: var(--text);
+      margin: 0 2px;
+    }
+
+    /* ===== ANIMATIONS ===== */
+    @keyframes pulse-dot { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(0.7); } }
+    @keyframes spin-ring { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    @keyframes slide-in { from { opacity: 0; transform: translateX(-8px); } to { opacity: 1; transform: translateX(0); } }
+
+    .toast {
+      position: fixed; top: 16px; left: 50%; transform: translateX(-50%);
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 8px; padding: 8px 16px;
+      font-family: 'Space Mono', monospace; font-size: 0.72rem;
+      z-index: 999; pointer-events: none;
+      animation: toast-show 2.5s ease forwards;
+    }
+    @keyframes toast-show {
+      0%   { opacity: 0; transform: translateX(-50%) translateY(-8px); }
+      10%  { opacity: 1; transform: translateX(-50%) translateY(0); }
+      80%  { opacity: 1; }
+      100% { opacity: 0; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header>
+  <div class="logo">
+    <div class="logo-icon">🎙</div>
+    <div class="logo-text">Voice<span>Ctrl</span></div>
+  </div>
+  <div class="header-status">
+    <div class="status-dot" id="statusDot"></div>
+    <span id="statusText">OFFLINE</span>
+  </div>
+  <div style="font-family:'Space Mono',monospace;font-size:0.65rem;color:var(--muted);">
+    SVM Speech Recognition v1.0
+  </div>
+</header>
+
+<!-- LEFT PANEL -->
+<div class="panel-left">
+  <div class="section-label">Microphone</div>
+  <div class="mic-container">
+    <div class="mic-ring">
+      <svg class="mic-ring-svg" id="micRingSvg" viewBox="0 0 100 100">
+        <circle cx="50" cy="50" r="44" fill="none" stroke="var(--border)" stroke-width="1" />
+        <circle cx="50" cy="50" r="44" fill="none" stroke="var(--accent)"
+          stroke-width="1.5" stroke-dasharray="8 4" stroke-linecap="round" opacity="0.5"/>
+      </svg>
+      <button class="mic-btn" id="micBtn" onclick="toggleListening()">🎤</button>
+    </div>
+    <div class="mic-label" id="micLabel">NHẤN ĐỂ NÓI</div>
+  </div>
+
+  <div class="section-label">API Endpoint</div>
+  <div class="input-group">
+    <input type="text" id="apiUrl" value="http://localhost:8000" placeholder="http://localhost:8000" />
+    <button class="connect-btn" id="connectBtn" onclick="testConnection()">Kiểm Tra Kết Nối</button>
+  </div>
+
+  <div class="section-label">Lịch Sử Lệnh</div>
+  <div class="history-list" id="historyList">
+    <div style="font-family:'Space Mono',monospace;font-size:0.65rem;color:var(--muted);padding:8px 0;">Chưa có lệnh nào...</div>
+  </div>
+</div>
+
+<!-- ARENA / GAME -->
+<div class="arena-wrap">
+  <div class="game-container">
+    <canvas id="cv" height="360"></canvas>
+
+    <!-- HUD overlays -->
+    <div id="top-hud">
+      <div class="hud-score" id="sc">0</div>
+      <div class="hud-right">
+        <div class="hud-lives" id="lv"></div>
+        <div class="hud-coins"><div class="coin-icon"></div><span id="cn">0</span></div>
+      </div>
+    </div>
+    <div class="speed-badge" id="speedBadge">1.0x</div>
+    <div id="cmd-hud">
+      <div class="gcmd" id="b-left">&#8592; LEFT</div>
+      <div class="gcmd" id="b-up">&#8593; UP</div>
+      <div class="gcmd" id="b-down">&#8595; DOWN</div>
+      <div class="gcmd" id="b-right">&#8594; RIGHT</div>
+    </div>
+
+    <!-- Start / Game Over overlay -->
+    <div id="game-overlay">
+      <h2>Subway Runner</h2>
+      <div class="sub">Né chướng ngại vật bằng lệnh thoại<br>hoặc nút bấm thủ công</div>
+      <div class="mic-toggle-group" id="micToggleGroup">
+        <button class="mic-toggle-btn active" id="tog-mic" onclick="setMicMode(true)">🎤 Dùng MIC</button>
+        <button class="mic-toggle-btn" id="tog-manual" onclick="setMicMode(false)">🕹 Thủ Công</button>
+      </div>
+      <button id="start-btn" onclick="startGame()">Bắt Đầu</button>
+    </div>
+
+    <!-- In-game End button overlay (bottom-right) -->
+    <div id="ingame-end-btn" style="display:none;position:absolute;bottom:44px;right:8px;z-index:10;">
+      <button onclick="endGame()" style="background:rgba(247,106,138,0.85);color:#fff;border:none;border-radius:8px;padding:4px 10px;font-family:'Syne',sans-serif;font-size:0.65rem;font-weight:700;cursor:pointer;letter-spacing:0.04em;backdrop-filter:blur(4px);">■ Kết Thúc</button>
+    </div>
+  </div>
+
+  <!-- Manual control buttons (shown only in manual mode) -->
+  <div class="manual-controls" id="manualControls" style="display:none;">
+    <div class="manual-row">
+      <div class="ctrl-spacer"></div>
+      <button class="ctrl-btn up-btn" id="btn-up" onclick="manualCmd('up')">↑</button>
+      <div class="ctrl-spacer"></div>
+    </div>
+    <div class="manual-row">
+      <button class="ctrl-btn left-btn" id="btn-left" onclick="manualCmd('left')">←</button>
+      <button class="ctrl-btn down-btn" id="btn-down" onclick="manualCmd('down')">↓</button>
+      <button class="ctrl-btn right-btn" id="btn-right" onclick="manualCmd('right')">→</button>
+    </div>
+  </div>
+</div>
+<div class="panel-right">
+  <div class="section-label">Lệnh Nhận Dạng</div>
+  <div class="prediction-display">
+    <div class="pred-command" id="predCommand">—</div>
+    <div class="pred-sub" id="predSub">Chờ lệnh thoại...</div>
+  </div>
+
+  <div class="section-label">Waveform</div>
+  <div class="waveform-container" id="waveformContainer"></div>
+
+  <div class="section-label">Độ Tin Cậy</div>
+  <div class="confidence-bars" id="confBars"></div>
+
+  <div class="section-label">Thống Kê</div>
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="stat-val" id="statTotal">0</div>
+      <div class="stat-lbl">Tổng lệnh</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-val" id="statAccuracy" style="color:var(--accent3)">—</div>
+      <div class="stat-lbl">Conf. TB</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-val" id="statLatency" style="color:var(--accent2)">—</div>
+      <div class="stat-lbl">Độ trễ TB</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-val" id="statLast" style="color:var(--down)">—</div>
+      <div class="stat-lbl">Trễ cuối</div>
+    </div>
+  </div>
+</div>
+
+<!-- FOOTER -->
+<footer>
+  <div class="footer-info">
+    Đề tài: Ứng dụng ML trong điều khiển đối tượng trên Web bằng lệnh thoại thời gian thực
+  </div>
+  <div class="footer-info">
+    Phím tắt: <span class="kbd">SPACE</span> ghi âm &nbsp;|&nbsp;
+    <span class="kbd">↑↓←→</span> di chuyển &nbsp;|&nbsp;
+    <span class="kbd">ENTER</span> bắt đầu game
+  </div>
+</footer>
+
+<script>
+/* =======================================================
+   GAME ENGINE — Subway Runner
+   ======================================================= */
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+let GW = 0, GH = 360;
+
+function resizeCanvas() {
+  GW = cv.offsetWidth;
+  cv.width = GW;
+  cv.height = GH;
+}
+
+const HORIZON = 100;
+let LANES, GROUND;
+
+function calcLayout() {
+  LANES = [GW * 0.25, GW * 0.5, GW * 0.75];
+  GROUND = GH - 70;
+}
+
+let gs, rafId;
+
+function mkGS() {
+  return {
+    st: 'idle', frame: 0, score: 0, coins: 0, lives: 3,
+    speed: 1.2, speedMult: 0.3,
+    player: { lane: 1, x: 0, y: 0, vy: 0, onGround: true, ducking: false, inv: 0, targetLane: 1 },
+    obs: [], coinObjs: [], particles: [], floatTexts: [],
+    buildings: [], trainX: 9999, trainVisible: false
+  };
+}
+
+function initBuildings() {
+  gs.buildings = [];
+  const count = Math.ceil(GW / 70) + 2;
+  for (let i = 0; i < count; i++) {
+    gs.buildings.push({
+      x: i * (GW / (count - 1)),
+      w: 35 + Math.random() * 45,
+      h: 55 + Math.random() * 90,
+      colorIdx: i % 4
+    });
+  }
+  gs.trainX = GW + 100;
+  gs.trainVisible = Math.random() > 0.4;
+}
+
+const BLD_COLORS = ['#1a1a3e', '#0d1a3e', '#1a0d3e', '#0d2a3e'];
+
+function drawBg() {
+  ctx.fillStyle = '#080818'; ctx.fillRect(0, 0, GW, GH);
+  ctx.fillStyle = '#0a0a25'; ctx.fillRect(0, 0, GW, HORIZON);
+
+  // Stars
+  const stars = [];
+  for (let i = 0; i < 18; i++) stars.push([(i * 37 + 20) % GW, 10 + (i * 17) % 55]);
+  ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  stars.forEach(([sx, sy]) => { ctx.beginPath(); ctx.arc(sx, sy, 1, 0, Math.PI * 2); ctx.fill(); });
+
+  // Moon
+  ctx.fillStyle = '#fff9e0'; ctx.beginPath(); ctx.arc(GW - 55, 28, 16, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#0a0a25'; ctx.beginPath(); ctx.arc(GW - 47, 24, 13, 0, Math.PI * 2); ctx.fill();
+
+  // Buildings
+  const bgScroll = (gs.frame * gs.speed * gs.speedMult * 0.25) % GW;
+  gs.buildings.forEach(b => {
+    let bx = ((b.x - bgScroll) % GW + GW) % GW;
+    ctx.fillStyle = BLD_COLORS[b.colorIdx];
+    ctx.fillRect(bx, HORIZON - b.h, b.w, b.h);
+    ctx.fillStyle = 'rgba(255,220,100,0.55)';
+    for (let wx = bx + 4; wx < bx + b.w - 4; wx += 10) {
+      for (let wy = HORIZON - b.h + 6; wy < HORIZON - 6; wy += 12) {
+        if (Math.sin(wx * 3 + wy * 7) > 0.15) ctx.fillRect(wx, wy, 5, 4);
+      }
+    }
+  });
+
+  // Train
+  if (gs.trainVisible) {
+    const tx = gs.trainX;
+    ctx.fillStyle = '#1a2a4a'; ctx.fillRect(tx, HORIZON - 28, 170, 20);
+    ctx.fillStyle = '#2a4a8a'; ctx.fillRect(tx + 8, HORIZON - 24, 154, 14);
+    [18, 62, 106].forEach(ox => {
+      ctx.fillStyle = 'rgba(255,220,80,0.85)';
+      ctx.fillRect(tx + ox, HORIZON - 22, 16, 9);
+    });
+  }
+
+  // Ground
+  ctx.fillStyle = '#141428'; ctx.fillRect(0, HORIZON, GW, GH - HORIZON);
+  ctx.fillStyle = '#1a1a35'; ctx.fillRect(GW * 0.05, HORIZON, GW * 0.9, GH - HORIZON);
+
+  // Lane lines perspective
+  const vanishX = GW / 2, vanishY = HORIZON + 8;
+  [GW * 0.05, GW * 0.33, GW * 0.5, GW * 0.67, GW * 0.95].forEach(lx => {
+    ctx.strokeStyle = 'rgba(255,255,255,0.09)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(vanishX + (lx - GW / 2) * 0.04, vanishY); ctx.lineTo(lx, GH); ctx.stroke();
+  });
+
+  // Dashed dividers animated
+  const dashOff = (gs.frame * gs.speed * gs.speedMult * 0.5) % 50;
+  [GW * 0.33, GW * 0.67].forEach(lx => {
+    ctx.strokeStyle = 'rgba(255,255,255,0.18)'; ctx.lineWidth = 1;
+    ctx.setLineDash([18, 28]); ctx.lineDashOffset = -dashOff;
+    ctx.beginPath(); ctx.moveTo(lx, HORIZON + 18); ctx.lineTo(lx, GH); ctx.stroke();
+  });
+  ctx.setLineDash([]);
+
+  // Speed lines
+  if (gs.speedMult > 1.6) {
+    ctx.strokeStyle = 'rgba(100,150,255,0.12)'; ctx.lineWidth = 1;
+    for (let i = 0; i < 6; i++) {
+      const ly = HORIZON + i * (GH - HORIZON) / 6;
+      ctx.beginPath(); ctx.moveTo(0, ly); ctx.lineTo(GW, ly); ctx.stroke();
+    }
+  }
+}
+
+function drawPlayer() {
+  const p = gs.player;
+  if (p.inv > 0 && Math.floor(gs.frame / 4) % 2 === 0) return;
+  const px = p.x, py = p.y;
+  const ph = p.ducking ? 22 : 50;
+  const pw = 26;
+
+  // Shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.35)';
+  ctx.beginPath(); ctx.ellipse(px, GROUND + 3, 13, 4, 0, 0, Math.PI * 2); ctx.fill();
+
+  if (p.ducking) {
+    ctx.fillStyle = '#5DCAA5';
+    ctx.beginPath(); ctx.roundRect(px - 18, py + 26, 38, 18, 5); ctx.fill();
+    ctx.fillStyle = '#9FE1CB';
+    ctx.beginPath(); ctx.roundRect(px - 14, py + 26, 30, 9, 3); ctx.fill();
+    ctx.fillStyle = '#f5c5a0';
+    ctx.beginPath(); ctx.arc(px + 14, py + 30, 8, 0, Math.PI * 2); ctx.fill();
+  } else {
+    const ls = Math.sin(gs.frame * 0.25) * 9;
+    // Legs
+    ctx.fillStyle = '#1a1a5a';
+    ctx.fillRect(px - 8, py + 28, 9, 18 + ls);
+    ctx.fillRect(px + 1, py + 28, 9, 18 - ls);
+    // Shoes
+    ctx.fillStyle = '#f7c500';
+    ctx.fillRect(px - 9, py + 44 + ls, 11, 5);
+    ctx.fillRect(px + 1, py + 44 - ls, 11, 5);
+    // Body
+    ctx.fillStyle = '#D85A30';
+    ctx.beginPath(); ctx.roundRect(px - 12, py + 5, 26, 24, 4); ctx.fill();
+    ctx.fillStyle = '#993C1D';
+    ctx.beginPath(); ctx.roundRect(px - 1, py + 7, 4, 20, 2); ctx.fill();
+    // Arms
+    const as = Math.sin(gs.frame * 0.25 + Math.PI) * 7;
+    ctx.fillStyle = '#D85A30';
+    ctx.fillRect(px - 17, py + 7 + as, 7, 12);
+    ctx.fillRect(px + 12, py + 7 - as, 7, 12);
+    // Head
+    ctx.fillStyle = '#f5c5a0';
+    ctx.beginPath(); ctx.arc(px, py + 1, 11, 0, Math.PI * 2); ctx.fill();
+    // Cap
+    ctx.fillStyle = '#f7c500';
+    ctx.beginPath(); ctx.arc(px, py - 4, 11, Math.PI, 0); ctx.fill();
+    ctx.fillRect(px - 11, py - 4, 22, 5);
+    ctx.fillRect(px - 15, py - 1, 7, 4);
+    // Eyes
+    ctx.fillStyle = '#1a1a3e';
+    ctx.beginPath(); ctx.arc(px - 4, py + 1, 2, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(px + 4, py + 1, 2, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(px - 3, py, 0.8, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(px + 5, py, 0.8, 0, Math.PI * 2); ctx.fill();
+  }
+
+  // Speed trail
+  if (gs.speedMult > 1.8) {
+    ctx.fillStyle = 'rgba(247,197,0,0.25)';
+    for (let i = 1; i <= 4; i++) {
+      ctx.beginPath(); ctx.arc(px - i * 11, py + 22, 3.5 - i * 0.5, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+}
+
+function project(laneIdx, z) {
+  z = Math.max(0.01, z);
+  const vx = GW / 2, vy = HORIZON + 8;
+  const lx = LANES[laneIdx];
+  const sx = vx + (lx - vx) * z;
+  const sy = vy + (GROUND + 18 - vy) * z;
+  return { sx, sy, z };
+}
+
+function drawObs() {
+  gs.obs.forEach(o => {
+    const sc = 0.38 + o.z * 0.62;
+    const { sx, sy } = o;
+    ctx.save();
+    ctx.translate(sx, sy);
+    if (o.type === 'barrier') {
+      ctx.fillStyle = '#E24B4A';
+      ctx.fillRect(-14 * sc, -38 * sc, 28 * sc, 38 * sc);
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(-14 * sc, -42 * sc, 28 * sc, 7 * sc);
+      ctx.fillStyle = '#E24B4A';
+      ctx.font = `bold ${Math.round(12 * sc)}px sans-serif`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('!', 0, -38 * sc + 3.5 * sc);
+    } else if (o.type === 'train') {
+      ctx.fillStyle = '#1a3a6a'; ctx.fillRect(-22 * sc, -56 * sc, 44 * sc, 56 * sc);
+      ctx.fillStyle = '#2a5a9a'; ctx.fillRect(-18 * sc, -52 * sc, 36 * sc, 48 * sc);
+      [-10 * sc, 0, 10 * sc].forEach(ox => {
+        ctx.fillStyle = 'rgba(255,220,80,0.9)';
+        ctx.fillRect(ox - 5 * sc, -46 * sc, 9 * sc, 14 * sc);
+      });
+      ctx.fillStyle = 'rgba(220,0,0,0.9)';
+      ctx.fillRect(-22 * sc, -60 * sc, 44 * sc, 7 * sc);
+    } else if (o.type === 'low') {
+      ctx.fillStyle = '#534AB7'; ctx.fillRect(-20 * sc, -18 * sc, 40 * sc, 18 * sc);
+      ctx.fillStyle = '#7F77DD'; ctx.fillRect(-20 * sc, -20 * sc, 40 * sc, 5 * sc);
+    }
+    ctx.restore();
+  });
+}
+
+function drawCoins() {
+  gs.coinObjs.forEach(c => {
+    if (c.collected) return;
+    const sc = 0.38 + c.z * 0.62;
+    const pulse = 1 + Math.sin(gs.frame * 0.15) * 0.1;
+    const r = 8 * sc * pulse;
+    ctx.fillStyle = '#f7c500'; ctx.strokeStyle = '#EF9F27'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(c.sx, c.sy, r, 0, Math.PI * 2);
+    ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#EF9F27';
+    ctx.font = `bold ${Math.round(9 * sc)}px sans-serif`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('$', c.sx, c.sy);
+  });
+}
+
+function drawParticles() {
+  gs.particles.forEach(p => {
+    ctx.globalAlpha = p.life;
+    ctx.fillStyle = p.color;
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fill();
+  });
+  ctx.globalAlpha = 1;
+}
+
+function drawFloatTexts() {
+  gs.floatTexts.forEach(t => {
+    ctx.globalAlpha = t.life;
+    ctx.fillStyle = t.color;
+    ctx.font = `700 ${t.size}px 'Space Mono', monospace`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(t.text, t.x, t.y);
+  });
+  ctx.globalAlpha = 1;
+}
+
+function updateHUD() {
+  document.getElementById('sc').textContent = gs.score;
+  document.getElementById('cn').textContent = gs.coins;
+  document.getElementById('speedBadge').textContent = gs.speedMult.toFixed(1) + 'x';
+  const lv = document.getElementById('lv');
+  lv.innerHTML = '';
+  for (let i = 0; i < gs.lives; i++) {
+    const h = document.createElement('div'); h.className = 'heart';
+    const tri = document.createElement('div'); tri.className = 'heart-tri';
+    h.appendChild(tri); lv.appendChild(h);
+  }
+}
+
+function spawnObs() {
+  const lane = Math.floor(Math.random() * 3);
+  const types = ['barrier', 'train', 'low'];
+  const type = types[Math.floor(Math.random() * types.length)];
+  gs.obs.push({ lane, z: 0.01, type, sx: 0, sy: 0 });
+}
+
+function spawnCoin() {
+  const lane = Math.floor(Math.random() * 3);
+  gs.coinObjs.push({ lane, z: 0.01, collected: false, lo: (Math.random() - 0.5) * 0.08, sx: 0, sy: 0 });
+}
+
+function addParticles(x, y, color, n = 7) {
+  for (let i = 0; i < n; i++) {
+    gs.particles.push({ x, y, vx: (Math.random() - 0.5) * 5, vy: -Math.random() * 4 - 1, r: 2 + Math.random() * 3, life: 1, color });
+  }
+}
+
+function addFloat(x, y, text, color = '#f7c500', size = 14) {
+  gs.floatTexts.push({ x, y, text, color, size, life: 1, vy: -1.2 });
+}
+
+function triggerVoiceCommand(cmd) {
+  if (gs.st !== 'playing') return;
+  ['left', 'up', 'down', 'right'].forEach(c => document.getElementById('b-' + c).classList.remove('active'));
+  document.getElementById('b-' + cmd).classList.add('active');
+  setTimeout(() => document.getElementById('b-' + cmd).classList.remove('active'), 380);
+
+  const p = gs.player;
+  if (cmd === 'left' && p.targetLane > 0) p.targetLane--;
+  else if (cmd === 'right' && p.targetLane < 2) p.targetLane++;
+  else if (cmd === 'up' && p.onGround) {
+    p.vy = -13; p.onGround = false;
+    addFloat(p.x, p.y - 20, 'JUMP!', '#5DCAA5');
+  } else if (cmd === 'down' && p.onGround) {
+    p.ducking = true;
+    setTimeout(() => { p.ducking = false; }, 650);
+    addFloat(p.x, p.y - 20, 'DUCK!', '#7F77DD');
+  }
+}
+window.triggerVoiceCommand = triggerVoiceCommand;
+
+function showGameOver() {
+  gs.st = 'over';
+  autoMicEnabled = false;
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') { mediaRecorder.stop(); }
+  resetMicUI();
+  document.getElementById('ingame-end-btn').style.display = 'none';
+  document.getElementById('manualControls').style.display = 'none';
+  const ov = document.getElementById('game-overlay');
+  ov.style.display = 'flex';
+  ov.innerHTML = `
+    <h2>Game Over</h2>
+    <div class="score-big">${gs.score}</div>
+    <div class="score-label">ĐIỂM SỐ</div>
+    <div class="sub" style="margin-bottom:14px">Xu: ${gs.coins} &nbsp;|&nbsp; Tốc độ: ${gs.speedMult.toFixed(1)}x</div>
+    <div class="mic-toggle-group">
+      <button class="mic-toggle-btn ${useMicMode ? 'active' : ''}" id="tog-mic" onclick="setMicMode(true)">🎤 Dùng MIC</button>
+      <button class="mic-toggle-btn ${!useMicMode ? 'active' : ''}" id="tog-manual" onclick="setMicMode(false)">🕹 Thủ Công</button>
+    </div>
+    <button id="start-btn" onclick="startGame()">Chơi Lại</button>
+  `;
+}
+
+function startGame() {
+  resizeCanvas();
+  calcLayout();
+  if (rafId) cancelAnimationFrame(rafId);
+  gs = mkGS();
+  gs.st = 'playing';
+  gs.player.x = LANES[1];
+  gs.player.y = GROUND - 50;
+  initBuildings();
+  document.getElementById('game-overlay').style.display = 'none';
+  document.getElementById('ingame-end-btn').style.display = 'block';
+
+  // Show/hide manual controls based on mode
+  document.getElementById('manualControls').style.display = useMicMode ? 'none' : 'flex';
+
+  if (useMicMode) {
+    autoMicEnabled = true;
+    setTimeout(startAutoMic, 300);
+  } else {
+    autoMicEnabled = false;
+  }
+  loop();
+}
+
+function loop() {
+  if (gs.st !== 'playing') return;
+  rafId = requestAnimationFrame(loop);
+  gs.frame++;
+  const spd = gs.speed * gs.speedMult;
+  gs.score += Math.round(spd * 0.08);
+
+  // Speed ramp every 600 frames (capped at 0.3x)
+  if (gs.frame % 600 === 0) gs.speedMult = Math.min(gs.speedMult + 0.02, 0.3);
+
+  // Train in bg
+  gs.trainX -= 2.5;
+  if (gs.trainX < -220) { gs.trainX = GW + 100; gs.trainVisible = Math.random() > 0.35; }
+
+  // Player physics
+  const p = gs.player;
+  p.x += (LANES[p.targetLane] - p.x) * 0.14;
+  p.vy += 0.58; p.y += p.vy;
+  if (p.y >= GROUND - 50) { p.y = GROUND - 50; p.vy = 0; p.onGround = true; }
+  if (p.inv > 0) p.inv--;
+
+  // Move obstacles (z: 0→1)
+  // zSpd tuned so obstacle takes ~5-6s to reach player (60fps: 1/0.003 ≈ 333 frames ≈ 5.5s)
+  const zSpd = spd * 0.0025;
+  gs.obs.forEach(o => {
+    o.z += zSpd;
+    const pr = project(o.lane, o.z); o.sx = pr.sx; o.sy = pr.sy;
+  });
+  gs.coinObjs.forEach(c => {
+    c.z += zSpd;
+    const pr = project(c.lane, c.z); c.sx = pr.sx + c.lo * 40; c.sy = pr.sy - 14;
+  });
+
+  // Spawn (longer intervals at slow speed)
+  if (gs.frame % Math.max(180, Math.floor(220 / gs.speedMult)) === 0) spawnObs();
+  if (gs.frame % 120 === 0) spawnCoin();
+
+  // Collision
+  if (p.inv === 0) {
+    for (const o of gs.obs) {
+      if (o.z > 0.84 && o.z < 1.06 && o.lane === p.targetLane) {
+        if (o.type === 'low' && p.ducking) continue;
+        if (o.type !== 'low' && !p.ducking) {
+          gs.lives--; p.inv = 90;
+          addParticles(p.x, p.y + 20, '#E24B4A');
+          addFloat(p.x, p.y - 30, '-1 MẠNG', '#E24B4A', 12);
+          if (gs.lives <= 0) { showGameOver(); return; }
+          break;
+        }
+        if (o.type === 'low' && !p.ducking && !p.onGround) {
+          gs.lives--; p.inv = 90;
+          addParticles(p.x, p.y + 20, '#E24B4A');
+          if (gs.lives <= 0) { showGameOver(); return; }
+          break;
+        }
+      }
+    }
+  }
+
+  // Collect coins
+  gs.coinObjs.forEach(c => {
+    if (!c.collected && c.z > 0.83 && c.z < 1.06 && c.lane === p.targetLane) {
+      c.collected = true; gs.coins++; gs.score += 50;
+      addParticles(c.sx, c.sy, '#f7c500', 6);
+      addFloat(c.sx, c.sy - 18, '+50', '#f7c500', 13);
+    }
+  });
+
+  // Cleanup
+  gs.obs = gs.obs.filter(o => o.z < 1.12);
+  gs.coinObjs = gs.coinObjs.filter(c => c.z < 1.12);
+  gs.particles.forEach(p => { p.x += p.vx; p.y += p.vy; p.vy += 0.18; p.life -= 0.04; });
+  gs.particles = gs.particles.filter(p => p.life > 0);
+  gs.floatTexts.forEach(t => { t.y += t.vy; t.life -= 0.022; });
+  gs.floatTexts = gs.floatTexts.filter(t => t.life > 0);
+
+  drawBg();
+  drawCoins();
+  drawObs();
+  drawPlayer();
+  drawParticles();
+  drawFloatTexts();
+  updateHUD();
+}
+
+/* =======================================================
+   VOICE / API LOGIC (giữ nguyên từ VoiceCtrl gốc)
+   ======================================================= */
+const RECORD_MS = 1500;
+let isListening = false;
+let mediaRecorder = null;
+let audioChunks = [];
+let audioCtx = null;
+let analyser = null;
+let waveAnimFrame = null;
+let apiStats = { total: 0, confSum: 0, latencySum: 0, lastLatency: 0 };
+let apiConnected = false;
+
+let autoMicEnabled = false;
+let useMicMode = true; // default: use MIC
+
+function setMicMode(useMic) {
+  useMicMode = useMic;
+  document.getElementById('tog-mic').classList.toggle('active', useMic);
+  document.getElementById('tog-manual').classList.toggle('active', !useMic);
+}
+
+function manualCmd(cmd) {
+  if (gs.st !== 'playing') return;
+  triggerVoiceCommand(cmd);
+  addHistory(cmd, 1.0, 0);
+  // Flash the button
+  const el = document.getElementById('btn-' + cmd);
+  if (el) {
+    el.classList.add('flash');
+    setTimeout(() => el.classList.remove('flash'), 280);
+  }
+}
+
+function init() {
+  renderWaveform();
+  renderConfBars({});
+  setupKeyboard();
+  resizeCanvas();
+  calcLayout();
+}
+
+async function toggleListening() {
+  if (isListening) return;
+  if (!apiConnected) { showToast('⚠️ Chưa kết nối API. Kiểm tra endpoint.'); return; }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    startRecording(stream);
+  } catch (e) { showToast('❌ Không thể truy cập microphone'); }
+}
+
+async function startAutoMic() {
+  if (!autoMicEnabled || isListening || gs.st !== 'playing') return;
+  if (!apiConnected) return;
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    startRecording(stream);
+  } catch (e) { /* silent */ }
+}
+
+function startRecording(stream) {
+  isListening = true;
+  audioChunks = [];
+  audioCtx = new AudioContext();
+  analyser = audioCtx.createAnalyser();
+  analyser.fftSize = 64;
+  const src = audioCtx.createMediaStreamSource(stream);
+  src.connect(analyser);
+  animateWaveform();
+
+  mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+  mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+  mediaRecorder.onstop = () => {
+    stream.getTracks().forEach(t => t.stop());
+    stopWaveformAnim();
+    sendAudio().finally(() => {
+      // Auto-restart mic if game still playing
+      if (autoMicEnabled && gs.st === 'playing') {
+        setTimeout(startAutoMic, 200);
+      }
+    });
+  };
+  mediaRecorder.start();
+
+  document.getElementById('micBtn').className = 'mic-btn listening';
+  document.getElementById('micRingSvg').className = 'mic-ring-svg active';
+  document.getElementById('micLabel').textContent = 'ĐANG NGHE...';
+  document.getElementById('statusDot').className = 'status-dot listening';
+  document.getElementById('statusText').textContent = 'LISTENING';
+
+  setTimeout(() => {
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') { mediaRecorder.stop(); resetMicUI(); }
+  }, RECORD_MS);
+}
+
+function resetMicUI() {
+  isListening = false;
+  document.getElementById('micBtn').className = 'mic-btn';
+  document.getElementById('micRingSvg').className = 'mic-ring-svg';
+  document.getElementById('micLabel').textContent = 'NHẤN ĐỂ NÓI';
+  document.getElementById('statusDot').className = apiConnected ? 'status-dot active' : 'status-dot';
+  document.getElementById('statusText').textContent = apiConnected ? 'ONLINE' : 'OFFLINE';
+}
+
+async function sendAudio() {
+  const blob = new Blob(audioChunks, { type: 'audio/webm' });
+  const formData = new FormData();
+  formData.append('audio', blob, 'command.webm');
+  const apiUrl = document.getElementById('apiUrl').value.trim();
+  const t0 = performance.now();
+  try {
+    const res = await fetch(`${apiUrl}/predict`, { method: 'POST', body: formData });
+    const data = await res.json();
+    const latency = Math.round(performance.now() - t0);
+    if (data.command) handlePrediction(data, latency);
+    else showToast('⚠️ Không nhận dạng được lệnh');
+  } catch (e) { showToast('❌ Lỗi kết nối API'); }
+}
+
+function handlePrediction(data, clientLatency) {
+  const cmd = data.command.toLowerCase();
+  const conf = data.confidence || 0;
+  const latency = data.latency_ms || clientLatency;
+
+  // Gọi game
+  if (['up', 'down', 'left', 'right'].includes(cmd)) {
+    triggerVoiceCommand(cmd);
+  }
+
+  // Update UI
+  const predEl = document.getElementById('predCommand');
+  predEl.textContent = cmd.toUpperCase();
+  predEl.className = 'pred-command ' + cmd;
+  document.getElementById('predSub').textContent = `Conf: ${(conf * 100).toFixed(1)}%  |  Trễ: ${latency}ms`;
+  renderConfBars(data.probabilities || {});
+
+  apiStats.total++;
+  apiStats.confSum += conf;
+  apiStats.latencySum += latency;
+  apiStats.lastLatency = latency;
+  updateStats();
+  addHistory(cmd, conf, latency);
+}
+
+async function testConnection() {
+  const apiUrl = document.getElementById('apiUrl').value.trim();
+  const btn = document.getElementById('connectBtn');
+  btn.textContent = 'Đang kiểm tra...'; btn.disabled = true;
+  try {
+    const res = await fetch(`${apiUrl}/health`);
+    const data = await res.json();
+    apiConnected = true;
+    btn.textContent = '✓ Đã kết nối'; btn.className = 'connect-btn connected';
+    document.getElementById('statusDot').className = 'status-dot active';
+    document.getElementById('statusText').textContent = 'ONLINE';
+    showToast(`✅ Kết nối thành công! Model: ${data.model_loaded ? 'loaded' : 'mock'}`);
+  } catch (e) {
+    apiConnected = false;
+    btn.textContent = '✗ Thất bại — Thử lại'; btn.className = 'connect-btn';
+    showToast('❌ Không thể kết nối tới API');
+  }
+  btn.disabled = false;
+}
+
+function addHistory(cmd, conf, latency) {
+  const list = document.getElementById('historyList');
+  const placeholder = list.querySelector('[style]');
+  if (placeholder) placeholder.remove();
+  const item = document.createElement('div');
+  item.className = `history-item ${cmd}`;
+  item.innerHTML = `<span class="history-cmd ${cmd}">${cmd.toUpperCase()}</span><span class="history-conf">${(conf * 100).toFixed(0)}% · ${latency}ms</span>`;
+  list.insertBefore(item, list.firstChild);
+  while (list.children.length > 20) list.removeChild(list.lastChild);
+}
+
+function renderConfBars(probabilities) {
+  const cmds = ['up', 'down', 'left', 'right'];
+  const container = document.getElementById('confBars');
+  container.innerHTML = '';
+  cmds.forEach(cmd => {
+    const val = probabilities[cmd] !== undefined ? probabilities[cmd] : 0;
+    const pct = (val * 100).toFixed(1);
+    container.innerHTML += `<div class="conf-row"><div class="conf-header"><span class="conf-cmd ${cmd}">${cmd}</span><span class="conf-val">${pct}%</span></div><div class="conf-bar-bg"><div class="conf-bar-fill ${cmd}" style="width:${pct}%"></div></div></div>`;
+  });
+}
+
+function updateStats() {
+  document.getElementById('statTotal').textContent = apiStats.total;
+  document.getElementById('statAccuracy').textContent = apiStats.total ? (apiStats.confSum / apiStats.total * 100).toFixed(1) + '%' : '—';
+  document.getElementById('statLatency').textContent = apiStats.total ? Math.round(apiStats.latencySum / apiStats.total) + 'ms' : '—';
+  document.getElementById('statLast').textContent = apiStats.lastLatency + 'ms';
+}
+
+function renderWaveform() {
+  const container = document.getElementById('waveformContainer');
+  container.innerHTML = '';
+  for (let i = 0; i < 32; i++) {
+    const bar = document.createElement('div');
+    bar.className = 'wave-bar';
+    bar.style.height = (Math.random() * 8 + 4) + 'px';
+    container.appendChild(bar);
+  }
+}
+
+function animateWaveform() {
+  if (!analyser) return;
+  const bars = document.querySelectorAll('.wave-bar');
+  const data = new Uint8Array(analyser.frequencyBinCount);
+  function draw() {
+    waveAnimFrame = requestAnimationFrame(draw);
+    analyser.getByteFrequencyData(data);
+    bars.forEach((bar, i) => {
+      const val = (data[i] || 0) / 255;
+      bar.style.height = Math.max(4, val * 50) + 'px';
+      bar.style.background = val > 0.5 ? 'var(--accent)' : 'var(--muted)';
+    });
+  }
+  draw();
+}
+
+function stopWaveformAnim() {
+  if (waveAnimFrame) cancelAnimationFrame(waveAnimFrame);
+  renderWaveform();
+  if (audioCtx) audioCtx.close().catch(() => {});
+  audioCtx = null; analyser = null;
+}
+
+function setupKeyboard() {
+  document.addEventListener('keydown', e => {
+    if (e.key === ' ' || e.key === 'Spacebar') { e.preventDefault(); toggleListening(); }
+    if (e.key === 'Enter') { e.preventDefault(); startGame(); }
+    const map = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
+    if (map[e.key]) { e.preventDefault(); triggerVoiceCommand(map[e.key]); addHistory(map[e.key], 1.0, 0); }
+  });
+}
+
+function endGame() {
+  if (gs.st !== 'playing') return;
+  document.getElementById('ingame-end-btn').style.display = 'none';
+  document.getElementById('manualControls').style.display = 'none';
+  showGameOver();
+}
+
+function showToast(msg) {
+  const t = document.createElement('div');
+  t.className = 'toast'; t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2800);
+}
+
+window.addEventListener('load', () => {
+  init();
+  testConnection();
+});
+
+window.addEventListener('resize', () => {
+  if (gs && gs.st === 'playing') { resizeCanvas(); calcLayout(); }
+});
+</script>
+</body>
+</html>
