@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+numpy
+scipy
+librosa
+soundfile
+scikit-learn
+joblib
+imageio-ffmpeg
