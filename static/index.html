@@ -1044,7 +1044,7 @@ function showWin() {
 function nextLevel() {
   const next = currentLevel + 1;
   if (next < LEVELS.length) loadLevel(next);
-  else { showToast('🎉 Đã hoàn thành tất cả levels!'); loadLevel(0); }
+  else { showToast('Đã hoàn thành tất cả levels!'); loadLevel(0); }
 }
 
 // ============================================================
@@ -1080,7 +1080,7 @@ async function toggleListening() {
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     startRecording(stream);
-  } catch (e) { showToast('❌ Không thể truy cập microphone'); }
+  } catch (e) { showToast('Không thể truy cập microphone'); }
 }
 
 function startRecording(stream) {
@@ -1137,8 +1137,8 @@ async function sendAudio() {
     const data = await res.json();
     const latency = Math.round(performance.now() - t0);
     if (data.command) handlePrediction(data, latency);
-    else showToast('⚠️ Không nhận dạng được lệnh');
-  } catch (e) { showToast('❌ Lỗi kết nối API'); }
+    else showToast('Không nhận dạng được lệnh');
+  } catch (e) { showToast('Lỗi kết nối API'); }
 }
 
 function handlePrediction(data, clientLatency) {
@@ -1177,12 +1177,12 @@ async function testConnection() {
     btn.className = 'connect-btn connected';
     document.getElementById('statusDot').className = 'status-dot active';
     document.getElementById('statusText').textContent = 'ONLINE';
-    showToast(`✅ Kết nối thành công! Model: ${data.model_loaded ? 'loaded' : 'mock'}`);
+    showToast(`Kết nối thành công! Model: ${data.model_loaded ? 'loaded' : 'mock'}`);
   } catch (e) {
     apiConnected = false;
     btn.textContent = '✗ Thất bại — Thử lại';
     btn.className = 'connect-btn';
-    showToast('❌ Không thể kết nối tới API');
+    showToast('Không thể kết nối tới API');
   }
   btn.disabled = false;
 }
