@@ -1,0 +1,1305 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VoiceCtrl — Sokoban</title>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Be+Vietnam+Pro:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/lucide/0.383.0/umd/lucide.min.js"></script>
+  <style>
+    :root {
+      --bg: #f4f4fb;
+      --surface: #ffffff;
+      --surface2: #eaeaf5;
+      --border: #d0d0e8;
+      --accent: #5b48e8;
+      --accent2: #e8406a;
+      --accent3: #1ac99a;
+      --text: #1a1a2e;
+      --muted: #8080a8;
+      --up: #1ac99a;
+      --down: #e07a30;
+      --left: #5b48e8;
+      --right: #e8406a;
+      --cell: 62px;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Be Vietnam Pro', sans-serif;
+      height: 100vh;
+      overflow: hidden;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      grid-template-columns: 260px 1fr 260px;
+      grid-template-areas:
+        "header header header"
+        "left   arena  right"
+        "footer footer footer";
+    }
+
+    /* ===== HEADER ===== */
+    header {
+      grid-area: header;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 28px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
+    .logo { display: flex; align-items: center; gap: 10px; }
+    .logo-icon {
+      width: 36px; height: 36px;
+      background: var(--accent);
+      border-radius: 8px;
+      display: grid; place-items: center;
+      font-size: 18px;
+    }
+    .logo-text { font-size: 1.1rem; font-weight: 800; letter-spacing: -0.02em; }
+    .logo-text span { color: var(--accent); }
+    .header-status {
+      display: flex; align-items: center; gap: 8px;
+      font-family: 'Space Mono', monospace;
+      font-size: 0.72rem; color: var(--muted);
+    }
+    .status-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--muted);
+      transition: all 0.3s;
+    }
+    .status-dot.active { background: var(--accent3); box-shadow: 0 0 8px var(--accent3); }
+    .status-dot.listening {
+      background: var(--accent2);
+      box-shadow: 0 0 8px var(--accent2);
+      animation: pulse-dot 1s ease-in-out infinite;
+    }
+
+    /* ===== LEFT PANEL ===== */
+    .panel-left {
+      grid-area: left;
+      border-right: 1px solid var(--border);
+      display: flex; flex-direction: column;
+      padding: 24px 20px;
+      gap: 20px;
+      overflow-y: auto;
+    }
+    .section-label {
+      font-family: 'Space Mono', monospace;
+      font-size: 0.65rem;
+      color: var(--muted);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    /* Mic */
+    .mic-container { display: flex; flex-direction: column; align-items: center; gap: 16px; }
+    .mic-ring { position: relative; width: 100px; height: 100px; }
+    .mic-ring-svg { position: absolute; inset: 0; animation: none; }
+    .mic-ring-svg.active { animation: spin-ring 4s linear infinite; }
+    .mic-btn {
+      position: absolute; inset: 8px;
+      background: var(--surface2);
+      border: 2px solid var(--border);
+      border-radius: 50%;
+      cursor: pointer;
+      display: grid; place-items: center;
+      transition: all 0.2s;
+      font-size: 28px; color: var(--muted);
+    }
+    .mic-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .mic-btn.listening {
+      border-color: var(--accent2);
+      background: rgba(232,64,106,0.10);
+      color: var(--accent2);
+      box-shadow: 0 0 24px rgba(232,64,106,0.25);
+    }
+    .mic-label { font-size: 0.78rem; color: var(--muted); text-align: center; font-family: 'Space Mono', monospace; }
+
+    /* API */
+    .input-group { display: flex; flex-direction: column; gap: 6px; }
+    .input-group input {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 12px;
+      color: var(--text);
+      font-family: 'Space Mono', monospace;
+      font-size: 0.72rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .input-group input:focus { border-color: var(--accent); }
+    .connect-btn {
+      background: var(--accent); color: white; border: none;
+      border-radius: 8px; padding: 9px;
+      font-family: 'Be Vietnam Pro', sans-serif; font-weight: 600; font-size: 0.8rem;
+      cursor: pointer; transition: all 0.2s; letter-spacing: 0.02em;
+    }
+    .connect-btn:hover { background: #9080ff; }
+    .connect-btn.connected { background: var(--accent3); color: var(--bg); }
+
+    /* Level selector */
+    .level-btns { display: flex; flex-wrap: wrap; gap: 6px; }
+    .level-btn {
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 6px; padding: 5px 10px;
+      font-family: 'Space Mono', monospace; font-size: 0.65rem;
+      color: var(--muted); cursor: pointer; transition: all 0.15s;
+    }
+    .level-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .level-btn.active { border-color: var(--accent); background: rgba(91,72,232,0.12); color: var(--accent); }
+    .level-btn.solved { border-color: var(--accent3); color: var(--accent3); }
+
+    /* History */
+    .history-list {
+      flex: 1; overflow-y: auto;
+      display: flex; flex-direction: column; gap: 4px;
+    }
+    .history-list::-webkit-scrollbar { width: 3px; }
+    .history-list::-webkit-scrollbar-track { background: transparent; }
+    .history-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+    .history-item {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 6px 10px;
+      background: var(--surface2);
+      border-radius: 6px;
+      border-left: 3px solid var(--border);
+      animation: slide-in 0.2s ease;
+    }
+    .history-item.up    { border-left-color: var(--up); }
+    .history-item.down  { border-left-color: var(--down); }
+    .history-item.left  { border-left-color: var(--left); }
+    .history-item.right { border-left-color: var(--right); }
+    .history-cmd { font-family: 'Space Mono', monospace; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; }
+    .history-cmd.up    { color: var(--up); }
+    .history-cmd.down  { color: var(--down); }
+    .history-cmd.left  { color: var(--left); }
+    .history-cmd.right { color: var(--right); }
+    .history-conf { font-family: 'Space Mono', monospace; font-size: 0.65rem; color: var(--muted); }
+
+    /* ===== ARENA ===== */
+    .arena-wrap {
+      grid-area: arena;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 16px;
+      padding: 16px;
+      height: 100%;
+      overflow: hidden;
+    }
+
+    .game-header {
+      display: flex; align-items: center; gap: 28px;
+      font-family: 'Space Mono', monospace; font-size: 0.72rem;
+      flex-shrink: 0;
+    }
+    .game-stat {
+      display: flex; flex-direction: column; align-items: center; gap: 2px;
+    }
+    .game-stat-val { font-size: 1.4rem; font-weight: 700; color: var(--accent); }
+    .game-stat-lbl { font-size: 0.6rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+
+    .game-board-wrap {
+      position: relative;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow: hidden;
+      background: var(--surface);
+      flex-shrink: 0;
+    }
+    .game-board-wrap::before, .game-board-wrap::after {
+      content: '';
+      position: absolute;
+      width: 14px; height: 14px;
+      border-color: var(--accent);
+      border-style: solid;
+      z-index: 2;
+    }
+    .game-board-wrap::before { top: 10px; left: 10px; border-width: 2px 0 0 2px; }
+    .game-board-wrap::after  { bottom: 10px; right: 10px; border-width: 0 2px 2px 0; }
+
+    .game-board {
+      display: grid;
+      padding: 8px;
+      gap: 2px;
+      background:
+        linear-gradient(rgba(91,72,232,0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(91,72,232,0.04) 1px, transparent 1px);
+      background-size: calc(var(--cell) + 2px) calc(var(--cell) + 2px);
+    }
+
+    .cell {
+      width: var(--cell); height: var(--cell);
+      border-radius: 6px;
+      display: grid; place-items: center;
+      font-size: 24px;
+      position: relative;
+      transition: background 0.1s;
+    }
+
+    /* Cell types */
+    .cell-floor   { background: var(--surface2); }
+    .cell-wall    { background: var(--border); border-radius: 6px; }
+    .cell-wall::after {
+      content: '';
+      position: absolute; inset: 3px;
+      border-radius: 4px;
+      border: 1px solid rgba(0,0,0,0.08);
+    }
+    .cell-target  { background: var(--surface2); }
+    .cell-target::after {
+      content: '';
+      position: absolute;
+      width: 22px; height: 22px;
+      border-radius: 50%;
+      border: 2px solid var(--accent3);
+      opacity: 0.7;
+    }
+    .cell-box {
+      background: var(--surface2);
+    }
+    .cell-box .box-inner {
+      width: 46px; height: 46px;
+      background: var(--down);
+      border-radius: 8px;
+      display: grid; place-items: center;
+      font-size: 20px;
+      box-shadow: 0 0 12px rgba(224,122,48,0.25);
+      transition: all 0.15s cubic-bezier(0.22,1,0.36,1);
+    }
+    .cell-box-on-target { background: var(--surface2); }
+    .cell-box-on-target .box-inner {
+      width: 46px; height: 46px;
+      background: var(--accent3);
+      border-radius: 8px;
+      display: grid; place-items: center;
+      font-size: 20px;
+      box-shadow: 0 0 16px rgba(26,201,154,0.4);
+      animation: box-solved-pulse 1s ease-in-out infinite;
+    }
+    .cell-player  { background: var(--surface2); }
+    .cell-player .player-inner {
+      width: 48px; height: 48px;
+      background: var(--accent);
+      border-radius: 50%;
+      display: grid; place-items: center;
+      font-size: 22px;
+      box-shadow: 0 0 16px rgba(91,72,232,0.35);
+      transition: all 0.15s;
+      position: relative;
+    }
+    .cell-player .player-inner::before {
+      content: '';
+      position: absolute; inset: -4px;
+      border-radius: 50%;
+      border: 1px solid var(--accent);
+      opacity: 0.4;
+      animation: player-idle 2s ease-in-out infinite;
+    }
+    .cell-player-on-target { background: var(--surface2); }
+    .cell-player-on-target .player-inner {
+      width: 48px; height: 48px;
+      background: var(--accent);
+      border-radius: 50%;
+      display: grid; place-items: center;
+      font-size: 22px;
+      box-shadow: 0 0 16px rgba(91,72,232,0.35);
+      position: relative;
+    }
+
+    /* D-pad */
+    .dpad {
+      display: grid;
+      grid-template-areas: ". up ." "left center right" ". down .";
+      grid-template-columns: 44px 44px 44px;
+      grid-template-rows: 44px 44px 44px;
+      gap: 3px;
+    }
+    .dpad-btn {
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 6px; display: grid; place-items: center;
+      color: var(--muted); transition: all 0.15s; cursor: pointer;
+      font-family: 'Space Mono', monospace; font-size: 0.55rem; font-weight: 700;
+    }
+    .dpad-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .dpad-btn.active-up    { background: rgba(106,247,200,0.15); border-color: var(--up);    color: var(--up);    }
+    .dpad-btn.active-down  { background: rgba(224,122,48,0.12); border-color: var(--down);  color: var(--down);  }
+    .dpad-btn.active-left  { background: rgba(91,72,232,0.12); border-color: var(--left);  color: var(--left);  }
+    .dpad-btn.active-right { background: rgba(232,64,106,0.10); border-color: var(--right); color: var(--right); }
+    .dpad-btn[data-d="up"]    { grid-area: up; }
+    .dpad-btn[data-d="down"]  { grid-area: down; }
+    .dpad-btn[data-d="left"]  { grid-area: left; }
+    .dpad-btn[data-d="right"] { grid-area: right; }
+    .dpad-center { grid-area: center; background: var(--surface); border-radius: 6px; }
+
+    /* Win overlay */
+    .win-overlay {
+      position: absolute; inset: 0;
+      background: rgba(244,244,251,0.90);
+      display: none;
+      flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 16px;
+      border-radius: 12px;
+      z-index: 10;
+      animation: fade-in 0.3s ease;
+    }
+    .win-overlay.show { display: flex; }
+    .win-title {
+      font-size: 2rem; font-weight: 800;
+      color: var(--accent3);
+      text-shadow: 0 0 30px rgba(26,201,154,0.4);
+      letter-spacing: 0.05em;
+    }
+    .win-sub { font-family: 'Space Mono', monospace; font-size: 0.8rem; color: var(--muted); }
+    .win-btn {
+      background: var(--accent3); color: var(--bg);
+      border: none; border-radius: 8px; padding: 10px 24px;
+      font-family: 'Be Vietnam Pro', sans-serif; font-weight: 700; font-size: 0.9rem;
+      cursor: pointer; transition: all 0.2s;
+    }
+    .win-btn:hover { background: #8fffd9; }
+
+    /* Lose overlay */
+    .lose-overlay {
+      position: absolute; inset: 0;
+      background: rgba(244,244,251,0.92);
+      display: none;
+      flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 16px;
+      border-radius: 12px;
+      z-index: 10;
+      animation: fade-in 0.3s ease;
+    }
+    .lose-overlay.show { display: flex; }
+    .lose-title {
+      font-size: 2rem; font-weight: 800;
+      color: var(--accent2);
+      text-shadow: 0 0 30px rgba(232,64,106,0.35);
+      letter-spacing: 0.05em;
+    }
+    .lose-sub { font-family: 'Space Mono', monospace; font-size: 0.78rem; color: var(--muted); text-align: center; line-height: 1.6; }
+    .lose-btns { display: flex; gap: 10px; }
+    .lose-btn-undo {
+      background: var(--surface2); color: var(--text);
+      border: 1px solid var(--border); border-radius: 8px; padding: 10px 20px;
+      font-family: 'Be Vietnam Pro', sans-serif; font-weight: 600; font-size: 0.85rem;
+      cursor: pointer; transition: all 0.2s;
+    }
+    .lose-btn-undo:hover { border-color: var(--accent); color: var(--accent); }
+    .lose-btn-reset {
+      background: var(--accent2); color: var(--bg);
+      border: none; border-radius: 8px; padding: 10px 20px;
+      font-family: 'Be Vietnam Pro', sans-serif; font-weight: 700; font-size: 0.85rem;
+      cursor: pointer; transition: all 0.2s;
+    }
+    .lose-btn-reset:hover { background: #ff8ba7; }
+    .deadlock-cells .cell-box .box-inner { background: var(--accent2) !important; box-shadow: 0 0 16px rgba(232,64,106,0.35) !important; }
+
+    /* ===== RIGHT PANEL ===== */
+    .panel-right {
+      grid-area: right;
+      border-left: 1px solid var(--border);
+      padding: 24px 20px;
+      display: flex; flex-direction: column; gap: 20px;
+      overflow-y: auto;
+    }
+
+    .prediction-display {
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 12px; padding: 16px; text-align: center;
+    }
+    .pred-command {
+      font-family: 'Space Mono', monospace;
+      font-size: 2rem; font-weight: 700;
+      letter-spacing: 0.08em; text-transform: uppercase;
+      color: var(--muted); transition: color 0.2s; min-height: 2.5rem;
+    }
+    .pred-command.up    { color: var(--up); }
+    .pred-command.down  { color: var(--down); }
+    .pred-command.left  { color: var(--left); }
+    .pred-command.right { color: var(--right); }
+    .pred-sub { font-size: 0.65rem; color: var(--muted); margin-top: 4px; }
+
+    /* Waveform */
+    .waveform-container {
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 10px; padding: 10px; height: 60px;
+      display: flex; align-items: center; justify-content: center; gap: 2px;
+    }
+    .wave-bar {
+      width: 3px; background: var(--muted);
+      border-radius: 2px; min-height: 4px;
+      transition: height 0.08s ease;
+    }
+
+    /* Confidence bars */
+    .confidence-bars { display: flex; flex-direction: column; gap: 10px; }
+    .conf-row { display: flex; flex-direction: column; gap: 5px; }
+    .conf-header { display: flex; justify-content: space-between; }
+    .conf-cmd { font-family: 'Space Mono', monospace; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; }
+    .conf-val { font-family: 'Space Mono', monospace; font-size: 0.72rem; color: var(--muted); }
+    .conf-bar-bg { height: 6px; background: var(--surface2); border-radius: 3px; overflow: hidden; }
+    .conf-bar-fill { height: 100%; width: 0%; border-radius: 3px; transition: width 0.3s ease; }
+    .conf-bar-fill.up    { background: var(--up); }
+    .conf-bar-fill.down  { background: var(--down); }
+    .conf-bar-fill.left  { background: var(--left); }
+    .conf-bar-fill.right { background: var(--right); }
+
+    /* Stats */
+    .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .stat-card {
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 10px; padding: 12px;
+    }
+    .stat-val { font-family: 'Space Mono', monospace; font-size: 1.1rem; font-weight: 700; color: var(--accent); }
+    .stat-lbl { font-size: 0.65rem; color: var(--muted); margin-top: 2px; }
+
+    /* Undo btn */
+    .undo-btn {
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 8px; padding: 9px;
+      font-family: 'Be Vietnam Pro', sans-serif; font-weight: 600; font-size: 0.8rem;
+      cursor: pointer; color: var(--muted); transition: all 0.2s;
+    }
+    .undo-btn:hover { border-color: var(--accent2); color: var(--accent2); }
+
+    /* ===== FOOTER ===== */
+    footer {
+      grid-area: footer;
+      border-top: 1px solid var(--border);
+      background: var(--surface);
+      padding: 10px 28px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .footer-info { font-family: 'Space Mono', monospace; font-size: 0.65rem; color: var(--muted); }
+    .kbd {
+      display: inline-flex; align-items: center; justify-content: center;
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 4px; padding: 2px 6px;
+      font-family: 'Space Mono', monospace; font-size: 0.6rem; color: var(--text);
+      margin: 0 2px;
+    }
+
+    /* ===== ANIMATIONS ===== */
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(0.7); }
+    }
+    @keyframes spin-ring { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    @keyframes player-idle {
+      0%, 100% { transform: scale(1); opacity: 0.5; }
+      50% { transform: scale(1.1); opacity: 0.3; }
+    }
+    @keyframes box-solved-pulse {
+      0%, 100% { box-shadow: 0 0 16px rgba(26,201,154,0.4); }
+      50% { box-shadow: 0 0 28px rgba(26,201,154,0.65); }
+    }
+    @keyframes slide-in {
+      from { opacity: 0; transform: translateX(-8px); }
+      to { opacity: 1; transform: translateX(0); }
+    }
+    @keyframes fade-in {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    @keyframes bump {
+      0% { transform: scale(1); }
+      40% { transform: scale(0.88); }
+      100% { transform: scale(1); }
+    }
+    .cell-bump .player-inner { animation: bump 0.18s ease; }
+
+    .toast {
+      position: fixed; top: 16px; left: 50%; transform: translateX(-50%);
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 8px; padding: 8px 16px;
+      font-family: 'Space Mono', monospace; font-size: 0.72rem;
+      z-index: 999; pointer-events: none;
+      animation: toast-show 2.5s ease forwards;
+    }
+    @keyframes toast-show {
+      0%   { opacity: 0; transform: translateX(-50%) translateY(-8px); }
+      10%  { opacity: 1; transform: translateX(-50%) translateY(0); }
+      80%  { opacity: 1; }
+      100% { opacity: 0; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header>
+  <div class="logo">
+    <div class="logo-icon"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg></div>
+    <div class="logo-text">Voice<span>Ctrl</span> — Sokoban</div>
+  </div>
+  <div class="header-status">
+    <div class="status-dot" id="statusDot"></div>
+    <span id="statusText">OFFLINE</span>
+  </div>
+  <div style="font-family:'Space Mono',monospace;font-size:0.65rem;color:var(--muted);">
+    SVM Speech Recognition v3.0
+  </div>
+</header>
+
+<!-- LEFT PANEL -->
+<div class="panel-left">
+  <div class="section-label">Microphone</div>
+  <div class="mic-container">
+    <div class="mic-ring">
+      <svg class="mic-ring-svg" id="micRingSvg" viewBox="0 0 100 100">
+        <circle cx="50" cy="50" r="44" fill="none" stroke="var(--border)" stroke-width="1" />
+        <circle cx="50" cy="50" r="44" fill="none" stroke="var(--accent)"
+          stroke-width="1.5" stroke-dasharray="8 4" stroke-linecap="round" opacity="0.5"/>
+      </svg>
+      <button class="mic-btn" id="micBtn" onclick="toggleListening()"><svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg></button>
+    </div>
+    <div class="mic-label" id="micLabel">NHẤN ĐỂ NÓI</div>
+  </div>
+
+  <div class="section-label">API Endpoint</div>
+  <div class="input-group">
+    <input type="text" id="apiUrl" value="http://localhost:8000" placeholder="http://localhost:8000" />
+    <button class="connect-btn" id="connectBtn" onclick="testConnection()">Kiểm Tra Kết Nối</button>
+  </div>
+
+  <div class="section-label">Chọn Level</div>
+  <div class="level-btns" id="levelBtns"></div>
+
+  <div class="section-label">Lịch Sử Lệnh</div>
+  <div class="history-list" id="historyList">
+    <div style="font-family:'Space Mono',monospace;font-size:0.65rem;color:var(--muted);padding:8px 0;">Chưa có lệnh nào...</div>
+  </div>
+</div>
+
+<!-- ARENA -->
+<div class="arena-wrap">
+  <div class="game-header">
+    <div class="game-stat">
+      <div class="game-stat-val" id="statMoves">0</div>
+      <div class="game-stat-lbl">Bước</div>
+    </div>
+    <div class="game-stat">
+      <div class="game-stat-val" id="statBoxes" style="color:var(--accent3)">0/0</div>
+      <div class="game-stat-lbl">Hộp vào ô</div>
+    </div>
+    <div class="game-stat">
+      <div class="game-stat-val" id="statLevel" style="color:var(--accent2)">1</div>
+      <div class="game-stat-lbl">Level</div>
+    </div>
+  </div>
+
+  <div class="game-board-wrap" id="gameBoardWrap">
+    <div class="game-board" id="gameBoard"></div>
+    <div class="win-overlay" id="winOverlay">
+      <div class="win-title"><svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;margin-right:8px"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg>SOLVED!</div>
+      <div class="win-sub" id="winSub">—</div>
+      <button class="win-btn" onclick="nextLevel()">Level Tiếp → </button>
+    </div>
+    <div class="lose-overlay" id="loseOverlay">
+      <div class="lose-title"><svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;margin-right:8px"><circle cx="12" cy="12" r="10"/><line x1="15" x2="9" y1="9" y2="15"/><line x1="9" x2="15" y1="9" y2="15"/></svg>DEADLOCK!</div>
+      <div class="lose-sub" id="loseSub">Hộp bị kẹt không thể đẩy vào<br>ô mục tiêu nữa.</div>
+      <div class="lose-btns">
+        <button class="lose-btn-undo" onclick="loseUndo()"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px;vertical-align:middle"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>Hoàn tác</button>
+        <button class="lose-btn-reset" onclick="resetLevel()"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px;vertical-align:middle"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>Reset Level</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- RIGHT PANEL -->
+<div class="panel-right">
+  <div class="section-label">Lệnh Nhận Dạng</div>
+  <div class="prediction-display">
+    <div class="pred-command" id="predCommand">—</div>
+    <div class="pred-sub" id="predSub">Chờ lệnh thoại...</div>
+  </div>
+
+  <div class="section-label">Waveform</div>
+  <div class="waveform-container" id="waveformContainer"></div>
+
+  <div class="section-label">Độ Tin Cậy</div>
+  <div class="confidence-bars" id="confBars"></div>
+
+  <div class="section-label">Thống Kê</div>
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="stat-val" id="statTotal">0</div>
+      <div class="stat-lbl">Tổng lệnh</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-val" id="statAccuracy" style="color:var(--accent3)">—</div>
+      <div class="stat-lbl">Conf. TB</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-val" id="statLatency" style="color:var(--accent2)">—</div>
+      <div class="stat-lbl">Độ trễ TB</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-val" id="statLast" style="color:var(--down)">—</div>
+      <div class="stat-lbl">Trễ cuối</div>
+    </div>
+  </div>
+
+  <div class="section-label">Điều Khiển</div>
+  <button class="undo-btn" onclick="undoMove()"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px;vertical-align:middle"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>Hoàn tác bước cuối</button>
+  <button class="undo-btn" onclick="resetLevel()" style="margin-top:-10px"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px;vertical-align:middle"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg>Reset Level</button>
+</div>
+
+<!-- FOOTER -->
+<footer>
+  <div class="footer-info">
+    Đề tài: Ứng dụng ML trong điều khiển đối tượng trên Web bằng lệnh thoại thời gian thực
+  </div>
+  <div class="footer-info">
+    Phim tat: <span class="kbd">SPACE</span> ghi am &nbsp;|&nbsp;
+    <span class="kbd">↑↓←→</span> di chuyen &nbsp;|&nbsp;
+    <span class="kbd">Z</span> hoan tac &nbsp;|&nbsp;
+    <span class="kbd">R</span> reset
+  </div>
+</footer>
+
+<script>
+// ============================================================
+//  LEVELS
+//  W=wall, _=floor, T=target, B=box, P=player, X=box-on-target
+// ============================================================
+const LEVELS = [
+  {
+    name: "Tutorial",
+    map: [
+      "WWWWWWW",
+      "W_____W",
+      "W_B___W",
+      "W__P__W",
+      "W___T_W",
+      "W_____W",
+      "WWWWWWW",
+    ]
+  },
+  {
+    name: "Two Boxes",
+    map: [
+      "WWWWWWW",
+      "W_____W",
+      "W_B_B_W",
+      "W__P__W",
+      "W_T_T_W",
+      "W_____W",
+      "WWWWWWW",
+    ]
+  },
+  {
+    name: "Around",
+    map: [
+      "WWWWWWW",
+      "W_TTT_W",
+      "W_____W",
+      "W_BBB_W",
+      "W__P__W",
+      "W_____W",
+      "WWWWWWW",
+    ]
+  },
+  {
+    name: "Corridor",
+    map: [
+      "WWWWWWWWW",
+      "W___W___W",
+      "W_B_P_B_W",
+      "W___W___W",
+      "W_TWWWT_W",
+      "WWWWWWWWW",
+    ]
+  },
+  {
+    name: "Four Boxes",
+    map: [
+      "WWWWWWWWW",
+      "W_______W",
+      "W_B___B_W",
+      "W___P___W",
+      "W_B___B_W",
+      "W_______W",
+      "W_T___T_W",
+      "W_______W",
+      "W_T___T_W",
+      "W_______W",
+      "WWWWWWWWW",
+    ]
+  },
+];
+
+// ============================================================
+//  GAME STATE
+// ============================================================
+const RECORD_MS = 1500;
+let currentLevel = 0;
+let solvedLevels = new Set();
+let boardState = [];   // 2D array of tile types
+let playerPos = { r: 0, c: 0 };
+let history = [];      // for undo: array of {board, playerPos}
+let moves = 0;
+let isListening = false;
+let mediaRecorder = null;
+let audioChunks = [];
+let audioCtx = null;
+let analyser = null;
+let waveAnimFrame = null;
+let apiConnected = false;
+let stats = { total: 0, confSum: 0, latencySum: 0, lastLatency: 0 };
+
+// Tile constants
+const T = { FLOOR: 0, WALL: 1, TARGET: 2, BOX: 3, BOX_ON_TARGET: 4, PLAYER: 5, PLAYER_ON_TARGET: 6 };
+
+// ============================================================
+//  LEVEL LOADING
+// ============================================================
+function loadLevel(idx) {
+  currentLevel = idx;
+  history = [];
+  moves = 0;
+  document.getElementById('statMoves').textContent = 0;
+  document.getElementById('statLevel').textContent = idx + 1;
+
+  const lv = LEVELS[idx];
+  const rows = lv.map.length;
+  const cols = Math.max(...lv.map.map(r => r.length));
+
+  boardState = [];
+  for (let r = 0; r < rows; r++) {
+    boardState[r] = [];
+    for (let c = 0; c < cols; c++) {
+      const ch = (lv.map[r] || '')[c] || ' ';
+      switch (ch) {
+        case 'W': boardState[r][c] = T.WALL; break;
+        case 'T': boardState[r][c] = T.TARGET; break;
+        case 'B': boardState[r][c] = T.BOX; break;
+        case 'X': boardState[r][c] = T.BOX_ON_TARGET; break;
+        case 'P':
+          boardState[r][c] = T.PLAYER;
+          playerPos = { r, c };
+          break;
+        default:  boardState[r][c] = T.FLOOR; break;
+      }
+    }
+  }
+
+  // Adjust cell size based on board dimensions
+  const maxDim = Math.max(rows, cols);
+  // Tính cell size động theo chiều cao available
+  const headerH = document.querySelector('header').offsetHeight;
+  const footerH = document.querySelector('footer').offsetHeight;
+  const gameHeaderH = 60; // stats bar
+  const padding = 64;
+  const availH = window.innerHeight - headerH - footerH - gameHeaderH - padding;
+  const availW = window.innerWidth - 260 - 260 - 40; // trừ 2 panel + padding
+  const available = Math.min(availH, availW);
+  const cellPx = Math.floor(available / maxDim) - 2;
+  const finalCell = Math.max(48, Math.min(80, cellPx));
+  document.documentElement.style.setProperty('--cell', finalCell + 'px');
+
+  document.getElementById('winOverlay').classList.remove('show');
+  document.getElementById('loseOverlay').classList.remove('show');
+  renderBoard();
+  updateBoxCount();
+  highlightActiveLevel(idx);
+}
+
+function renderBoard() {
+  const board = document.getElementById('gameBoard');
+  const rows = boardState.length;
+  const cols = boardState[0].length;
+  board.style.gridTemplateColumns = `repeat(${cols}, var(--cell))`;
+  board.innerHTML = '';
+
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const cell = document.createElement('div');
+      cell.className = 'cell ' + tileClass(boardState[r][c]);
+      cell.dataset.r = r; cell.dataset.c = c;
+
+      const t = boardState[r][c];
+      if (t === T.BOX || t === T.BOX_ON_TARGET) {
+        const inner = document.createElement('div');
+        inner.className = 'box-inner';
+        inner.textContent = '📦';
+        cell.appendChild(inner);
+      }
+      if (t === T.PLAYER || t === T.PLAYER_ON_TARGET) {
+        const inner = document.createElement('div');
+        inner.className = 'player-inner';
+        inner.textContent = '😀';
+        cell.appendChild(inner);
+      }
+
+      board.appendChild(cell);
+    }
+  }
+}
+
+function tileClass(t) {
+  switch (t) {
+    case T.WALL:             return 'cell-wall';
+    case T.TARGET:           return 'cell-target';
+    case T.BOX:              return 'cell-box';
+    case T.BOX_ON_TARGET:    return 'cell-box-on-target';
+    case T.PLAYER:           return 'cell-player';
+    case T.PLAYER_ON_TARGET: return 'cell-player-on-target';
+    default:                 return 'cell-floor';
+  }
+}
+
+function updateBoxCount() {
+  let onTarget = 0, total = 0;
+  for (let r = 0; r < boardState.length; r++)
+    for (let c = 0; c < boardState[r].length; c++) {
+      if (boardState[r][c] === T.BOX || boardState[r][c] === T.BOX_ON_TARGET) total++;
+      if (boardState[r][c] === T.BOX_ON_TARGET) onTarget++;
+    }
+  document.getElementById('statBoxes').textContent = `${onTarget}/${total}`;
+  return onTarget === total;
+}
+
+// ============================================================
+//  MOVEMENT
+// ============================================================
+function move(direction) {
+  const delta = { up: [-1,0], down: [1,0], left: [0,-1], right: [0,1] }[direction];
+  if (!delta) return false;
+
+  const nr = playerPos.r + delta[0];
+  const nc = playerPos.c + delta[1];
+
+  if (!inBounds(nr, nc)) return false;
+  const dest = boardState[nr][nc];
+  if (dest === T.WALL) { bumpFeedback(); return false; }
+
+  // Save state for undo
+  history.push({
+    board: boardState.map(r => [...r]),
+    playerPos: { ...playerPos }
+  });
+
+  if (dest === T.BOX || dest === T.BOX_ON_TARGET) {
+    // Hộp đã vào đúng ô target → không cho đẩy ra
+    if (dest === T.BOX_ON_TARGET) { history.pop(); bumpFeedback(); return false; }
+
+    // Push box
+    const br = nr + delta[0];
+    const bc = nc + delta[1];
+    if (!inBounds(br, bc)) { history.pop(); return false; }
+    const behindBox = boardState[br][bc];
+    if (behindBox === T.WALL || behindBox === T.BOX || behindBox === T.BOX_ON_TARGET) {
+      history.pop(); bumpFeedback(); return false;
+    }
+    // Move box
+    boardState[br][bc] = (behindBox === T.TARGET) ? T.BOX_ON_TARGET : T.BOX;
+    boardState[nr][nc] = T.FLOOR;
+  }
+
+  // Move player
+  const srcTile = boardState[playerPos.r][playerPos.c];
+  boardState[playerPos.r][playerPos.c] = (srcTile === T.PLAYER_ON_TARGET) ? T.TARGET : T.FLOOR;
+  boardState[nr][nc] = (boardState[nr][nc] === T.TARGET) ? T.PLAYER_ON_TARGET : T.PLAYER;
+  playerPos = { r: nr, c: nc };
+
+  moves++;
+  document.getElementById('statMoves').textContent = moves;
+
+  renderBoard();
+  flashDpad(direction);
+  const solved = updateBoxCount();
+  if (solved) setTimeout(showWin, 300);
+  else setTimeout(checkDeadlock, 50);
+  return true;
+}
+
+// ============================================================
+//  DEADLOCK DETECTION — chỉ detect corner deadlock thực sự
+// ============================================================
+function isWallOrEdge(r, c) {
+  if (r < 0 || r >= boardState.length || c < 0 || c >= boardState[0].length) return true;
+  return boardState[r][c] === T.WALL;
+}
+
+// Để đẩy hộp theo chiều dọc: cần cả ô trên lẫn ô dưới đều không phải tường
+// (đẩy lên: trên = đích, dưới = player; đẩy xuống: dưới = đích, trên = player)
+function canPushVertical(r, c) {
+  return !isWallOrEdge(r - 1, c) && !isWallOrEdge(r + 1, c);
+}
+
+// Tương tự theo chiều ngang
+function canPushHorizontal(r, c) {
+  return !isWallOrEdge(r, c - 1) && !isWallOrEdge(r, c + 1);
+}
+
+// Corner deadlock thực sự:
+// hộp không đẩy được theo ĐỒNG THỜI cả 2 trục → hoàn toàn bất động
+function isCornerDeadlock(r, c) {
+  return !canPushVertical(r, c) && !canPushHorizontal(r, c);
+}
+
+function checkDeadlock() {
+  const deadboxes = [];
+  for (let r = 0; r < boardState.length; r++) {
+    for (let c = 0; c < boardState[r].length; c++) {
+      // Chỉ xét hộp CHƯA vào target
+      if (boardState[r][c] === T.BOX && isCornerDeadlock(r, c)) {
+        deadboxes.push({ r, c });
+      }
+    }
+  }
+  if (deadboxes.length > 0) {
+    highlightDeadboxes(deadboxes);
+    setTimeout(() => showLose(deadboxes.length), 400);
+  }
+}
+
+function highlightDeadboxes(deadboxes) {
+  deadboxes.forEach(({ r, c }) => {
+    const board = document.getElementById('gameBoard');
+    const cols = boardState[0].length;
+    const idx = r * cols + c;
+    const cell = board.children[idx];
+    if (cell) {
+      const inner = cell.querySelector('.box-inner');
+      if (inner) {
+        inner.style.background = 'var(--accent2)';
+        inner.style.boxShadow = '0 0 20px rgba(247,106,138,0.6)';
+        inner.textContent = '⚠️';
+      }
+    }
+  });
+}
+
+function showLose(count) {
+  document.getElementById('loseSub').innerHTML =
+    `<b style="color:var(--accent2)">${count} hộp</b> bị kẹt không thể đẩy vào ô mục tiêu.<br>Hoàn tác hoặc reset để tiếp tục.`;
+  document.getElementById('loseOverlay').classList.add('show');
+}
+
+function loseUndo() {
+  document.getElementById('loseOverlay').classList.remove('show');
+  // Undo until no deadlock box remains (tối đa 10 bước)
+  let attempts = 0;
+  do {
+    undoMove();
+    attempts++;
+  } while (attempts < 10 && hasDeadlock());
+}
+
+function hasDeadlock() {
+  for (let r = 0; r < boardState.length; r++)
+    for (let c = 0; c < boardState[r].length; c++)
+      if (boardState[r][c] === T.BOX && isCornerDeadlock(r, c)) return true;
+  return false;
+}
+
+function inBounds(r, c) {
+  return r >= 0 && r < boardState.length && c >= 0 && c < boardState[0].length;
+}
+
+function bumpFeedback() {
+  const wrap = document.getElementById('gameBoardWrap');
+  wrap.style.transform = 'scale(0.98)';
+  setTimeout(() => wrap.style.transform = '', 120);
+}
+
+function undoMove() {
+  if (!history.length) return;
+  const prev = history.pop();
+  boardState = prev.board;
+  playerPos = prev.playerPos;
+  moves = Math.max(0, moves - 1);
+  document.getElementById('statMoves').textContent = moves;
+  renderBoard();
+  updateBoxCount();
+}
+
+function resetLevel() { loadLevel(currentLevel); }
+
+function manualMove(dir) {
+  const moved = move(dir);
+  if (moved) addHistory(dir, 1.0, 0);
+}
+
+// ============================================================
+//  WIN
+// ============================================================
+function showWin() {
+  solvedLevels.add(currentLevel);
+  document.getElementById('winOverlay').classList.add('show');
+  document.getElementById('winSub').textContent = `${moves} bước · Level ${currentLevel + 1} hoàn thành!`;
+  highlightActiveLevel(currentLevel);
+}
+
+function nextLevel() {
+  const next = currentLevel + 1;
+  if (next < LEVELS.length) loadLevel(next);
+  else { showToast('🎉 Đã hoàn thành tất cả levels!'); loadLevel(0); }
+}
+
+// ============================================================
+//  LEVEL BUTTONS
+// ============================================================
+function buildLevelButtons() {
+  const container = document.getElementById('levelBtns');
+  container.innerHTML = '';
+  LEVELS.forEach((lv, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'level-btn' + (i === 0 ? ' active' : '');
+    btn.id = `lvbtn-${i}`;
+    btn.textContent = `${i + 1}. ${lv.name}`;
+    btn.onclick = () => loadLevel(i);
+    container.appendChild(btn);
+  });
+}
+
+function highlightActiveLevel(idx) {
+  document.querySelectorAll('.level-btn').forEach((b, i) => {
+    b.className = 'level-btn' +
+      (i === idx ? ' active' : '') +
+      (solvedLevels.has(i) ? ' solved' : '');
+  });
+}
+
+// ============================================================
+//  RECORDING
+// ============================================================
+async function toggleListening() {
+  if (isListening) return;
+  if (!apiConnected) { showToast('⚠️ Chưa kết nối API. Kiểm tra endpoint.'); return; }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    startRecording(stream);
+  } catch (e) { showToast('❌ Không thể truy cập microphone'); }
+}
+
+function startRecording(stream) {
+  isListening = true;
+  audioChunks = [];
+  audioCtx = new AudioContext();
+  analyser = audioCtx.createAnalyser();
+  analyser.fftSize = 64;
+  audioCtx.createMediaStreamSource(stream).connect(analyser);
+  animateWaveform();
+
+  mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+  mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+  mediaRecorder.onstop = () => {
+    stream.getTracks().forEach(t => t.stop());
+    stopWaveformAnim();
+    sendAudio();
+  };
+  mediaRecorder.start();
+
+  document.getElementById('micBtn').className = 'mic-btn listening';
+  document.getElementById('micRingSvg').className = 'mic-ring-svg active';
+  document.getElementById('micLabel').textContent = 'ĐANG NGHE...';
+  document.getElementById('statusDot').className = 'status-dot listening';
+  document.getElementById('statusText').textContent = 'LISTENING';
+
+  setTimeout(() => {
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+      mediaRecorder.stop(); resetMicUI();
+    }
+  }, RECORD_MS);
+}
+
+function resetMicUI() {
+  isListening = false;
+  document.getElementById('micBtn').className = 'mic-btn';
+  document.getElementById('micRingSvg').className = 'mic-ring-svg';
+  document.getElementById('micLabel').textContent = 'NHẤN ĐỂ NÓI';
+  document.getElementById('statusDot').className = apiConnected ? 'status-dot active' : 'status-dot';
+  document.getElementById('statusText').textContent = apiConnected ? 'ONLINE' : 'OFFLINE';
+}
+
+// ============================================================
+//  API
+// ============================================================
+async function sendAudio() {
+  const blob = new Blob(audioChunks, { type: 'audio/webm' });
+  const formData = new FormData();
+  formData.append('audio', blob, 'command.webm');
+  const apiUrl = document.getElementById('apiUrl').value.trim();
+  const t0 = performance.now();
+  try {
+    const res = await fetch(`${apiUrl}/predict`, { method: 'POST', body: formData });
+    const data = await res.json();
+    const latency = Math.round(performance.now() - t0);
+    if (data.command) handlePrediction(data, latency);
+    else showToast('⚠️ Không nhận dạng được lệnh');
+  } catch (e) { showToast('❌ Lỗi kết nối API'); }
+}
+
+function handlePrediction(data, clientLatency) {
+  const cmd = data.command.toLowerCase();
+  const conf = data.confidence || 0;
+  const latency = data.latency_ms || clientLatency;
+
+  if (['up','down','left','right'].includes(cmd)) {
+    const moved = move(cmd);
+    if (moved) addHistory(cmd, conf, latency);
+  }
+
+  const predEl = document.getElementById('predCommand');
+  predEl.textContent = cmd.toUpperCase();
+  predEl.className = `pred-command ${cmd}`;
+  document.getElementById('predSub').textContent = `Conf: ${(conf*100).toFixed(1)}%  |  Trễ: ${latency}ms`;
+  renderConfBars(data.probabilities || {});
+
+  stats.total++;
+  stats.confSum += conf;
+  stats.latencySum += latency;
+  stats.lastLatency = latency;
+  updateStats();
+}
+
+async function testConnection() {
+  const apiUrl = document.getElementById('apiUrl').value.trim();
+  const btn = document.getElementById('connectBtn');
+  btn.textContent = 'Đang kiểm tra...';
+  btn.disabled = true;
+  try {
+    const res = await fetch(`${apiUrl}/health`);
+    const data = await res.json();
+    apiConnected = true;
+    btn.textContent = '✓ Đã kết nối';
+    btn.className = 'connect-btn connected';
+    document.getElementById('statusDot').className = 'status-dot active';
+    document.getElementById('statusText').textContent = 'ONLINE';
+    showToast(`✅ Kết nối thành công! Model: ${data.model_loaded ? 'loaded' : 'mock'}`);
+  } catch (e) {
+    apiConnected = false;
+    btn.textContent = '✗ Thất bại — Thử lại';
+    btn.className = 'connect-btn';
+    showToast('❌ Không thể kết nối tới API');
+  }
+  btn.disabled = false;
+}
+
+// ============================================================
+//  UI HELPERS
+// ============================================================
+function addHistory(cmd, conf, latency) {
+  const list = document.getElementById('historyList');
+  const placeholder = list.querySelector('[style]');
+  if (placeholder) placeholder.remove();
+  const item = document.createElement('div');
+  item.className = `history-item ${cmd}`;
+  item.innerHTML = `
+    <span class="history-cmd ${cmd}">${cmd.toUpperCase()}</span>
+    <span class="history-conf">${(conf*100).toFixed(0)}% · ${latency}ms</span>
+  `;
+  list.insertBefore(item, list.firstChild);
+  while (list.children.length > 20) list.removeChild(list.lastChild);
+}
+
+function renderConfBars(probabilities) {
+  const cmds = ['up','down','left','right'];
+  const container = document.getElementById('confBars');
+  container.innerHTML = '';
+  cmds.forEach(cmd => {
+    const val = probabilities[cmd] !== undefined ? probabilities[cmd] : 0;
+    const pct = (val * 100).toFixed(1);
+    container.innerHTML += `
+      <div class="conf-row">
+        <div class="conf-header">
+          <span class="conf-cmd ${cmd}">${cmd}</span>
+          <span class="conf-val">${pct}%</span>
+        </div>
+        <div class="conf-bar-bg">
+          <div class="conf-bar-fill ${cmd}" style="width:${pct}%"></div>
+        </div>
+      </div>
+    `;
+  });
+}
+
+function updateStats() {
+  document.getElementById('statTotal').textContent = stats.total;
+  document.getElementById('statAccuracy').textContent = stats.total ? (stats.confSum/stats.total*100).toFixed(1)+'%' : '—';
+  document.getElementById('statLatency').textContent  = stats.total ? Math.round(stats.latencySum/stats.total)+'ms' : '—';
+  document.getElementById('statLast').textContent     = stats.lastLatency+'ms';
+}
+
+function renderWaveform() {
+  const c = document.getElementById('waveformContainer');
+  c.innerHTML = '';
+  for (let i = 0; i < 32; i++) {
+    const bar = document.createElement('div');
+    bar.className = 'wave-bar';
+    bar.style.height = (Math.random() * 8 + 4) + 'px';
+    c.appendChild(bar);
+  }
+}
+
+function animateWaveform() {
+  if (!analyser) return;
+  const bars = document.querySelectorAll('.wave-bar');
+  const data = new Uint8Array(analyser.frequencyBinCount);
+  function draw() {
+    waveAnimFrame = requestAnimationFrame(draw);
+    analyser.getByteFrequencyData(data);
+    bars.forEach((bar, i) => {
+      const val = (data[i] || 0) / 255;
+      bar.style.height = Math.max(4, val * 50) + 'px';
+      bar.style.background = val > 0.5 ? 'var(--accent)' : 'var(--muted)';
+    });
+  }
+  draw();
+}
+
+function stopWaveformAnim() {
+  if (waveAnimFrame) cancelAnimationFrame(waveAnimFrame);
+  renderWaveform();
+  if (audioCtx) audioCtx.close().catch(() => {});
+  audioCtx = null; analyser = null;
+}
+
+function flashDpad(dir) {
+  document.querySelectorAll('.dpad-btn').forEach(b => b.className = 'dpad-btn');
+  const btn = document.querySelector(`.dpad-btn[data-d="${dir}"]`);
+  if (btn) { btn.className = `dpad-btn active-${dir}`; setTimeout(() => btn.className = 'dpad-btn', 400); }
+}
+
+function setupKeyboard() {
+  document.addEventListener('keydown', e => {
+    if (e.key === ' ' || e.key === 'Spacebar') { e.preventDefault(); toggleListening(); }
+    if (e.key === 'z' || e.key === 'Z') undoMove();
+    if (e.key === 'r' || e.key === 'R') resetLevel();
+    const map = { ArrowUp:'up', ArrowDown:'down', ArrowLeft:'left', ArrowRight:'right' };
+    if (map[e.key]) { e.preventDefault(); manualMove(map[e.key]); }
+  });
+}
+
+function showToast(msg) {
+  const t = document.createElement('div');
+  t.className = 'toast'; t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2800);
+}
+
+// ============================================================
+//  INIT
+// ============================================================
+window.addEventListener('load', () => {
+  buildLevelButtons();
+  loadLevel(0);
+  renderWaveform();
+  renderConfBars({});
+  setupKeyboard();
+  testConnection();
+});
+</script>
+</body>
+</html>
