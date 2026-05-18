@@ -77,7 +77,11 @@ app.add_middleware(
 )
 
 # ===== SERVE FRONTEND =====
-app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
+if os.path.isdir(STATIC_DIR):
+    app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
+    logger.info(f"Static files served from: {STATIC_DIR}")
+else:
+    logger.warning(f"Static dir không tồn tại: {STATIC_DIR}")
 
 
 # ===== AUDIO LOADING =====
