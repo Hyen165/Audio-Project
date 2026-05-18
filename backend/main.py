@@ -51,9 +51,7 @@ async def lifespan(app: FastAPI):
         scaler        = joblib.load(SCALER_PATH)
         label_encoder = joblib.load(ENCODER_PATH)
         pca           = joblib.load(PCA_PATH)
-
         logger.info("✅ Model + Scaler + LabelEncoder + PCA loaded")
-
     except Exception as e:
         logger.error(f"❌ Load model failed: {e}")
 
@@ -76,13 +74,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ===== SERVE FRONTEND =====
-if os.path.isdir(STATIC_DIR):
-    app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
-    logger.info(f"Static files served from: {STATIC_DIR}")
-else:
-    logger.warning(f"Static dir không tồn tại: {STATIC_DIR}")
-
 
 # ===== AUDIO LOADING =====
 def load_audio_bytes(audio_bytes: bytes):
@@ -93,9 +84,9 @@ def load_audio_bytes(audio_bytes: bytes):
         FFMPEG_PATH,
         "-loglevel", "error",
         "-i", "pipe:0",
-        "-ac", "1",
-        "-ar", "16000",
-        "-f", "f32le",
+        "-ac", "1",          # mono
+        "-ar", "16000",      # 16kHz
+        "-f", "f32le",       # float32 raw
         "pipe:1"
     ]
 
@@ -119,21 +110,23 @@ def load_audio_bytes(audio_bytes: bytes):
     return audio_data, 16000
 
 
-# ===== FEATURE =====
+# ===== FEATURE EXTRACTION =====
 def extract_features(audio_data: np.ndarray, sample_rate: int) -> np.ndarray:
     if len(audio_data.shape) > 1:
         audio_data = np.mean(audio_data, axis=1)
 
-    if np.max(np.abs(audio_data)) > 0:
-        audio_data = audio_data / np.max(np.abs(audio_data))
+    # Normalize
+    max_val = np.max(np.abs(audio_data))
+    if max_val > 0:
+        audio_data = audio_data / max_val
 
-    mfcc = librosa.feature.mfcc(y=audio_data, sr=sample_rate, n_mfcc=40)
-    delta_mfcc = librosa.feature.delta(mfcc)
-    delta2_mfcc = librosa.feature.delta(mfcc, order=2)
-    chroma = librosa.feature.chroma_stft(y=audio_data, sr=sample_rate)
-    zcr = librosa.feature.zero_crossing_rate(y=audio_data)
-    rms = librosa.feature.rms(y=audio_data)
-    contrast = librosa.feature.spectral_contrast(y=audio_data, sr=sample_rate)
+    mfcc         = librosa.feature.mfcc(y=audio_data, sr=sample_rate, n_mfcc=40)
+    delta_mfcc   = librosa.feature.delta(mfcc)
+    delta2_mfcc  = librosa.feature.delta(mfcc, order=2)
+    chroma       = librosa.feature.chroma_stft(y=audio_data, sr=sample_rate)
+    zcr          = librosa.feature.zero_crossing_rate(y=audio_data)
+    rms          = librosa.feature.rms(y=audio_data)
+    contrast     = librosa.feature.spectral_contrast(y=audio_data, sr=sample_rate)
 
     features = np.concatenate([
         np.mean(mfcc, axis=1),        np.std(mfcc, axis=1),
@@ -148,40 +141,51 @@ def extract_features(audio_data: np.ndarray, sample_rate: int) -> np.ndarray:
     return features
 
 
-# ===== API =====
-@app.post("/api/predict")
-async def predict_command(audio: UploadFile = File(...)):
+# ===== PREDICT ENDPOINT (cả /predict và /api/predict để tương thích frontend) =====
+async def _do_predict(audio: UploadFile):
     start_time = time.time()
 
     try:
         audio_bytes = await audio.read()
+        logger.info(f"📥 Nhận audio: {len(audio_bytes)} bytes, content_type={audio.content_type}")
 
         audio_data, sr = load_audio_bytes(audio_bytes)
+        logger.info(f"🎵 Decoded audio: {len(audio_data)} samples @ {sr}Hz, duration={len(audio_data)/sr:.2f}s")
+
         features = extract_features(audio_data, sr).reshape(1, -1)
 
         if model is not None:
-            features = scaler.transform(features)
-            features = pca.transform(features)
+            features_scaled = scaler.transform(features)
+            features_pca    = pca.transform(features_scaled)
 
-            pred = model.predict(features)[0]
+            pred       = model.predict(features_pca)[0]
             prediction = label_encoder.inverse_transform([pred])[0]
 
+            # Probabilities cho tất cả các lớp
+            probabilities = {}
             if hasattr(model, "predict_proba"):
-                proba = model.predict_proba(features)[0]
+                proba = model.predict_proba(features_pca)[0]
                 confidence = float(max(proba))
+                classes = label_encoder.inverse_transform(range(len(proba)))
+                probabilities = {str(cls): float(p) for cls, p in zip(classes, proba)}
             else:
                 confidence = 0.85
+                for cmd in ["up", "down", "left", "right"]:
+                    probabilities[cmd] = 0.25
         else:
-            prediction = "unknown"
-            confidence = 0.0
+            prediction    = "unknown"
+            confidence    = 0.0
+            probabilities = {}
 
         latency = round((time.time() - start_time) * 1000, 2)
+        logger.info(f"✅ Prediction: {prediction} ({confidence:.2%}) in {latency}ms")
 
         return {
-            "command": str(prediction),
-            "confidence": confidence,
-            "latency_ms": latency,
-            "status": "success"
+            "command":       str(prediction),
+            "confidence":    confidence,
+            "probabilities": probabilities,
+            "latency_ms":    latency,
+            "status":        "success"
         }
 
     except Exception as e:
@@ -190,9 +194,28 @@ async def predict_command(audio: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.post("/predict")
+async def predict_command(audio: UploadFile = File(...)):
+    return await _do_predict(audio)
+
+@app.post("/api/predict")
+async def predict_command_api(audio: UploadFile = File(...)):
+    return await _do_predict(audio)
+
+
+# ===== HEALTH =====
+@app.get("/health")
 @app.get("/api/health")
 async def health():
     return {
-        "status": "ok",
+        "status":       "ok",
         "model_loaded": model is not None
     }
+
+
+# ===== SERVE FRONTEND (phải đặt CUỐI CÙNG sau tất cả API routes) =====
+if os.path.isdir(STATIC_DIR):
+    app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
+    logger.info(f"Static files served from: {STATIC_DIR}")
+else:
+    logger.warning(f"Static dir không tồn tại: {STATIC_DIR}")
