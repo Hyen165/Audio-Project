@@ -1,5 +1,6 @@
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 
 import numpy as np
@@ -24,10 +25,14 @@ except Exception as e:
     logger.error(f"❌ Không tìm thấy ffmpeg: {e}")
 
 # ===== PATH =====
-MODEL_PATH   = "models/svm_speech_model_v3_svm.joblib"
-SCALER_PATH  = "models/scaler_v3.joblib"
-ENCODER_PATH = "models/label_encoder_v3.joblib"
-PCA_PATH     = "models/pca_v3.joblib"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+MODEL_PATH   = os.path.join(BASE_DIR, "models/svm_speech_model_v3_svm.joblib")
+SCALER_PATH  = os.path.join(BASE_DIR, "models/scaler_v3.joblib")
+ENCODER_PATH = os.path.join(BASE_DIR, "models/label_encoder_v3.joblib")
+PCA_PATH     = os.path.join(BASE_DIR, "models/pca_v3.joblib")
+
+STATIC_DIR = os.path.join(BASE_DIR, "..", "static")
 
 # ===== GLOBAL =====
 model = None
@@ -47,12 +52,12 @@ async def lifespan(app: FastAPI):
         label_encoder = joblib.load(ENCODER_PATH)
         pca           = joblib.load(PCA_PATH)
 
-        logger.info("✅ Model + Scaler + LabelEncoder + PCA (v3) loaded")
+        logger.info("✅ Model + Scaler + LabelEncoder + PCA loaded")
 
     except Exception as e:
         logger.error(f"❌ Load model failed: {e}")
 
-    yield  # bắt buộc
+    yield
 
 
 # ===== FASTAPI APP =====
@@ -70,6 +75,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ===== SERVE FRONTEND =====
+app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
 
 
 # ===== AUDIO LOADING =====
@@ -115,25 +123,12 @@ def extract_features(audio_data: np.ndarray, sample_rate: int) -> np.ndarray:
     if np.max(np.abs(audio_data)) > 0:
         audio_data = audio_data / np.max(np.abs(audio_data))
 
-    # MFCC (mean + std) — 80 chiều
     mfcc = librosa.feature.mfcc(y=audio_data, sr=sample_rate, n_mfcc=40)
-
-    # Delta MFCC (mean + std) — 80 chiều
     delta_mfcc = librosa.feature.delta(mfcc)
-
-    # Delta-Delta MFCC (mean + std) — 80 chiều
     delta2_mfcc = librosa.feature.delta(mfcc, order=2)
-
-    # Chroma (mean + std) — 24 chiều
     chroma = librosa.feature.chroma_stft(y=audio_data, sr=sample_rate)
-
-    # ZCR (mean + std) — 2 chiều
     zcr = librosa.feature.zero_crossing_rate(y=audio_data)
-
-    # RMS Energy (mean + std) — 2 chiều
     rms = librosa.feature.rms(y=audio_data)
-
-    # Spectral Contrast (mean + std) — 14 chiều (7 bands x 2)
     contrast = librosa.feature.spectral_contrast(y=audio_data, sr=sample_rate)
 
     features = np.concatenate([
@@ -150,62 +145,38 @@ def extract_features(audio_data: np.ndarray, sample_rate: int) -> np.ndarray:
 
 
 # ===== API =====
-@app.post("/predict")
+@app.post("/api/predict")
 async def predict_command(audio: UploadFile = File(...)):
     start_time = time.time()
 
     try:
         audio_bytes = await audio.read()
 
-        logger.info(f"Received {len(audio_bytes)} bytes")
-        logger.info(f"Content-Type: {audio.content_type}")
-
         audio_data, sr = load_audio_bytes(audio_bytes)
-
         features = extract_features(audio_data, sr).reshape(1, -1)
 
-        logger.info(f"Feature shape: {features.shape}")
-
         if model is not None:
-            # ===== SCALE =====
             features = scaler.transform(features)
-
-            # ===== PCA =====
             features = pca.transform(features)
 
-            # ===== PREDICT =====
             pred = model.predict(features)[0]
-
-            # ===== DECODE =====
             prediction = label_encoder.inverse_transform([pred])[0]
 
-            # ===== CONFIDENCE =====
             if hasattr(model, "predict_proba"):
                 proba = model.predict_proba(features)[0]
                 confidence = float(max(proba))
-
-                probabilities = {
-                    str(label_encoder.inverse_transform([cls])[0]): float(p)
-                    for cls, p in zip(model.classes_, proba)
-                }
             else:
                 confidence = 0.85
-                probabilities = {}
         else:
-            import random
-            prediction = random.choice(["left", "right", "up", "down"])
-            confidence = random.uniform(0.7, 0.99)
-            probabilities = {}
+            prediction = "unknown"
+            confidence = 0.0
 
         latency = round((time.time() - start_time) * 1000, 2)
-
-        logger.info(f"→ {prediction} ({confidence:.2f})")
 
         return {
             "command": str(prediction),
             "confidence": confidence,
             "latency_ms": latency,
-            "probabilities": probabilities,
             "status": "success"
         }
 
@@ -215,15 +186,9 @@ async def predict_command(audio: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/health")
+@app.get("/api/health")
 async def health():
     return {
         "status": "ok",
-        "model_loaded": model is not None,
-        "ffmpeg": FFMPEG_PATH
+        "model_loaded": model is not None
     }
-
-
-@app.get("/")
-async def root():
-    return {"message": "Speech Command API running"}
