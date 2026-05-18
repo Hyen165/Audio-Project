@@ -4,7 +4,7 @@ numpy
 scipy
 librosa
 soundfile
-scikit-learn
+scikit-learn==1.7.2
 joblib
 imageio-ffmpeg
 python-multipart
